@@ -52,20 +52,20 @@ JobPulse AI is an intelligent job search and matching platform that bridges the 
 
 ### 2. Live Job Discovery
 - **Multi-Source Ingestion**:
-  - **Adzuna API**: Authorized job listings targeting Indian hubs (`in`).
-  - **Remotive API**: Public feed for worldwide remote tech opportunities explicitly eligible for Indian candidates.
-  - **Arbeitnow API**: Public developer board serving as a fallback.
-- **Strict Recency Filtering**: Supports genuine 24-hour, 3-day, 7-day, and 14-day recency filters. Jobs without reliable source timestamps are marked `unverified` and excluded from strict short-term windows.
+  - **Adzuna API**: Authorized job listings targeting Indian hubs (`in`). Requires `ADZUNA_APP_ID` & `ADZUNA_APP_KEY`.
+  - **Remotive API**: Public REST API for worldwide remote tech opportunities explicitly eligible for Indian candidates (no API credentials required).
+  - **Arbeitnow API**: Public developer job board serving as a fallback (no API credentials required).
+- **Strict Recency Filtering**: Supports genuine 24-hour, 3-day, 7-day, and 14-day recency filters. Jobs without reliable source timestamps are marked `unverified` and excluded from strict short-term (24h & 72h) windows.
 
 ### 3. Live Vacancy Verification Engine
 - **Dedicated Verification Service**: Assesses destination application links without relying on superficial HTTP 200 responses.
 - **Six-Tier Status Classification**:
-  - `VERIFIED_OPEN`: Accessible listing on official ATS or employer portal.
-  - `LIKELY_OPEN`: Accessible listing, but active application submission cannot be conclusively proven.
-  - `EXPIRED_OR_CLOSED`: Conclusive closure detected (HTTP 404, or text containing *"job expired"*, *"position closed"*).
-  - `INVALID_LINK`: Malformed URL or unresolvable domain.
-  - `VERIFICATION_BLOCKED`: Access restricted by Cloudflare or anti-bot controls (HTTP 403/429); reported honestly without guessing.
-  - `UNKNOWN`: Status pending verification.
+  - `VERIFIED_OPEN`: Accessible listing on official ATS (Greenhouse, Lever, Workday, etc.) or page contains functional application call-to-action.
+  - `LIKELY_OPEN`: Destination responds with HTTP 200 OK, but active application submission cannot be conclusively proven. (An accessible HTTP 200 response does not guarantee an open requisition).
+  - `EXPIRED_OR_CLOSED`: Conclusive closure detected (HTTP 404/410, or page contains phrases such as *"job is no longer available"*, *"position has been filled"*, *"this vacancy has closed"*).
+  - `INVALID_LINK`: Malformed URL, unresolvable domain, or blocked by SSRF security guard.
+  - `VERIFICATION_BLOCKED`: Access restricted by Cloudflare or anti-bot controls (HTTP 403/429) or timed out (6s limit); reported honestly without guessing.
+  - `UNKNOWN`: Non-200 HTTP status or pending verification.
 - **On-Demand Inspection**: Users can click **Check Live Status** on any vacancy card to execute a real-time HTTP verification audit.
 
 ### 4. Structured 5-Factor Matching Engine
@@ -78,8 +78,8 @@ JobPulse AI is an intelligent job search and matching platform that bridges the 
 - **Closed Job Protection**: Any job flagged as `EXPIRED_OR_CLOSED` is automatically assigned a score of **0** and marked ineligible.
 
 ### 5. Automated Scheduler & Email Alerts
-- **Background Cron Engine**: Built-in `node-cron` daemon running daily at 09:00 IST.
-- **Notification Deduplication**: Stores recently notified vacancy IDs to prevent duplicate alerts.
+- **Background Cron Engine**: Built-in `node-cron` daemon running daily at 09:00 IST (`Asia/Kolkata`). Requires the backend Node.js process and host machine to remain running.
+- **Notification Deduplication**: Stores up to 100 recently notified vacancy IDs (`lastNotifiedJobIds`) to prevent duplicate email alerts during scheduled runs.
 - **Responsive HTML Digest**: Formatted emails featuring direct application links, verified status badges, match scores, and skill summaries.
 
 ---
@@ -90,7 +90,7 @@ JobPulse AI is an intelligent job search and matching platform that bridges the 
 1. RESUME UPLOAD      -> Upload PDF or DOCX file (magic-byte validated).
 2. PROFILE PARSING    -> Extracts degree, skills, certifications, and documented projects.
 3. PROFILE EDITOR     -> User reviews and adjusts target roles, skills, and locations.
-4. JOB DISCOVERY      -> Ingests vacancies from Adzuna (India) & Remotive (Remote).
+4. JOB DISCOVERY      -> Ingests vacancies from Adzuna (India), Remotive (Remote) & Arbeitnow.
 5. SSRF VERIFICATION  -> Safely resolves and audits application URLs against ATS platforms.
 6. 5-FACTOR MATCHING  -> Evaluates job family, skills, experience, degree, and location fit.
 7. LIVE DASHBOARD     -> Presents verified jobs with match breakdowns and filter controls.
@@ -123,7 +123,7 @@ flowchart TB
         subgraph Routes["API Routes"]
             R_Resume["`/api/resume`"]
             R_Jobs["`/api/jobs`"]
-            R_Dash["`/api/dashboard`"]
+            R_Dash["`/api/dashboard/stats`"]
             R_Settings["`/api/settings`"]
             R_Sched["`/api/scheduler`"]
             R_Health["`/api/health`"]
@@ -134,7 +134,7 @@ flowchart TB
             JobEngine["Job Discovery Engine (`jobService.ts`)"]
             Verifier["Vacancy Verifier (`verificationService.ts`)"]
             Matcher["5-Factor Matcher (`aiService.ts`)"]
-            Store["Local DataStore & Cache (`dataStore.ts`)"]
+            Store["Local JSON DataStore (`dataStore.ts`)"]
             Scheduler["Automation Scheduler (`schedulerService.ts`)"]
             Emailer["Email Dispatcher (`emailService.ts`)"]
         end
@@ -153,12 +153,14 @@ flowchart TB
     subgraph External["External APIs & Services"]
         Adzuna["Adzuna API (India)"]
         Remotive["Remotive API (Remote)"]
+        Arbeitnow["Arbeitnow API (Public Board)"]
         TargetATS["Employer ATS Systems"]
         SMTP["Gmail SMTP / Nodemailer"]
     end
 
     JobEngine --> Adzuna
     JobEngine --> Remotive
+    JobEngine --> Arbeitnow
     Verifier --> TargetATS
     Emailer --> SMTP
 ```
@@ -182,11 +184,11 @@ For an in-depth design specification and data flow diagrams, see [docs/ARCHITECT
 | **Execution Engine** | **tsx** (`^4.19.1`) | Zero-compile TypeScript execution for development and tests |
 | **Document Parsing** | **pdf-parse** (`^1.1.1`), **mammoth** (`^1.8.0`) | Stream-based text extraction for PDF and DOCX files |
 | **File Handling** | **multer** (`^1.4.5-lts.1`) | Multipart form handling with in-memory validation |
-| **Job Discovery APIs** | **Adzuna API**, **Remotive API** | Live job feeds with authentic publication metadata |
+| **Job Discovery APIs** | **Adzuna API**, **Remotive API**, **Arbeitnow API** | Live job feeds with authentic publication metadata |
 | **Job Verification** | Built-in Node.js `dns` & `fetch` | SSRF-guarded HTTP destination and ATS validation engine |
-| **Scheduler** | **node-cron** (`^4.6.0`) | Background automated discovery and digest daemon |
+| **Scheduler** | **node-cron** (`^4.6.0`) | Background automated discovery and digest daemon (09:00 IST) |
 | **Email Service** | **nodemailer** (`^6.9.15`) | Responsive HTML email digest generation via SMTP |
-| **Database / Store** | JSON / Memory Store (`dataStore.ts`) | Persistent local candidate and job store (MongoDB-ready via Mongoose `^8.7.0`) |
+| **Database / Store** | JSON File Store (`dataStore.ts`) | Persistent local candidate, settings, and job store in `./data/` with in-memory caching |
 
 ---
 
@@ -197,6 +199,7 @@ JobPulseAI/
 ├── .env.example                # Root environment template with safe placeholders
 ├── .gitignore                  # Git ignore rules (node_modules, .env, uploads, logs)
 ├── CONTRIBUTING.md             # Contribution guidelines & security disclosure
+├── package.json                # Root workspace convenience scripts (install, dev, test, build)
 ├── README.md                   # Main project documentation
 ├── docs/                       # Technical documentation
 │   ├── API.md                  # Complete REST API reference
@@ -276,8 +279,18 @@ Copy-Item .env.example .env
 Open `server/.env` in your code editor and configure your preferences (see the [Environment Configuration](#-environment-configuration) table below).
 
 ### 3. Install Dependencies
+You can install dependencies across the entire workspace in one command, or per directory:
+
+**Option A — Workspace Root (Convenience Script):**
+```powershell
+# From the JobPulseAI root directory:
+npm run install:all
+```
+
+**Option B — Per Directory:**
 ```powershell
 # Install backend dependencies
+cd server
 npm install
 
 # Install frontend dependencies
@@ -293,6 +306,7 @@ Open two separate PowerShell terminal windows:
 cd server
 npm run dev
 ```
+*(Or from root: `npm run dev:server`)*
 *The backend server will start at `http://localhost:5000`.*
 
 **Terminal 2 — Frontend Client:**
@@ -300,6 +314,7 @@ npm run dev
 cd client
 npm run dev
 ```
+*(Or from root: `npm run dev:client`)*
 *The Vite development server will start at `http://localhost:5173`.*
 
 Open your browser and navigate to **`http://localhost:5173`**.
@@ -314,12 +329,12 @@ All backend settings are controlled through `server/.env`. Below is a comprehens
 | :--- | :--- | :---: | :--- | :--- |
 | `PORT` | Backend HTTP server port | Optional | `5000` | `5000` |
 | `CORS_ORIGIN` | Allowed client origin for CORS | Optional | `http://localhost:5173` | `http://localhost:5173` |
-| `MONGODB_URI` | MongoDB connection URI | Optional | `mongodb://localhost:27017/jobpulse` | `mongodb://localhost:27017/jobpulse` *(falls back to local dataStore)* |
+| `DATA_DIR` | Directory path for local JSON store | Optional | `./data` | `./data` |
 | `ADZUNA_APP_ID` | Adzuna Job Board API Application ID | Optional | `your_adzuna_app_id` | `""` |
 | `ADZUNA_APP_KEY`| Adzuna Job Board API Secret Key | Optional | `your_adzuna_app_key` | `""` |
 | `ADZUNA_COUNTRY`| Adzuna target country code | Optional | `in` | `in` |
-| `JOB_PROVIDER` | Preferred provider identifier | Optional | `adzuna` or `arbeitnow` | `adzuna` *(if keys set)* or `arbeitnow` |
-| `DEMO_MODE` | Enable synthetic sample jobs for testing | Optional | `false` or `true` | `false` |
+| `JOB_PROVIDER` | Preferred primary provider | Optional | `adzuna` or `arbeitnow` | `adzuna` *(if keys set)* or `arbeitnow` |
+| `DEMO_MODE` | Load 10 synthetic test jobs for evaluation | Optional | `false` or `true` | `false` *(live feeds only)* |
 | `AI_PROVIDER` | Candidate matching engine type | Optional | `demo`, `gemini`, or `openai` | `demo` *(built-in 5-factor scoring)* |
 | `AI_API_KEY` | External AI API Key (if using Gemini/OpenAI)| Optional | `your_ai_key` | `""` |
 | `AI_MODEL` | External AI Model identifier | Optional | `gpt-4o-mini` | `gpt-4o-mini` |
@@ -335,7 +350,7 @@ All backend settings are controlled through `server/.env`. Below is a comprehens
 | `SCHEDULER_TIMEZONE` | Timezone identifier for cron | Optional | `Asia/Kolkata` | `Asia/Kolkata` |
 
 > [!TIP]
-> **Gmail SMTP Setup**: To enable email alerts via Gmail, enable 2-Step Verification in your Google Account, visit [Google App Passwords](https://myaccount.google.com/apppasswords), create an app named "JobPulse AI", and paste the generated 16-character code into `EMAIL_PASS`.
+> **Gmail SMTP Setup**: To enable email alerts via Gmail, enable 2-Step Verification in your Google Account, visit [Google App Passwords](https://myaccount.google.com/apppasswords), create an app named "JobPulse AI", and paste the generated 16-character code into `EMAIL_PASS`. Email alerts require `EMAIL_USER`, `EMAIL_PASS`, and `EMAIL_TO` to be configured, and email alerts must be enabled in Settings.
 
 ---
 
@@ -368,10 +383,12 @@ All backend settings are controlled through `server/.env`. Below is a comprehens
 JobPulse AI operates on principles of transparency and evidence-based reporting. Users and reviewers should note:
 
 1. **Relevance Estimation vs. Hiring Guarantee**: Match scores represent an algorithmic evaluation of profile relevance against listed vacancy requirements. A 90% score does not guarantee employment or an interview.
-2. **Vacancy Volatility**: External employer requisitions change frequently. Companies may pause hiring without removing their public careers page.
-3. **HTTP 200 Ambiguity**: A reachable URL returning HTTP 200 does not prove that an opening is actively accepting applications. Websites often return HTTP 200 for expired listings, general careers landing pages, or login forms. These are categorized as `LIKELY_OPEN` and never falsely labeled as conclusively verified.
-4. **Anti-Bot & Cloudflare Protections**: Certain employer portals return HTTP 403 or present CAPTCHAs to automated requests. JobPulse AI labels these listings as `VERIFICATION_BLOCKED` rather than guessing their status.
-5. **Local Scheduler Dependency**: Background automation via `node-cron` requires the Node.js backend process and host machine to remain running.
+2. **Vacancy Volatility**: External employer requisitions change frequently. Companies may pause hiring or close an opening without immediately removing their public careers page.
+3. **Accessible Links Do Not Guarantee an Open Vacancy (HTTP 200 Ambiguity)**: A reachable URL returning HTTP 200 does not prove that a requisition is actively accepting applications. Career sites often return HTTP 200 for expired listings, generic career landing pages, or login forms. These are categorized as `LIKELY_OPEN` and never falsely labeled as conclusively verified unless confirmed on an official ATS domain or with explicit application call-to-action elements.
+4. **Strict Recency Window Exclusion**: The application enforces honest publication dates. Vacancies without a reliable publication timestamp from the source feed are tagged `postedDateSource: 'unverified'` and are explicitly excluded from strict 24-hour and 72-hour filters. They appear only when the filter is widened to 7 days or 14 days (`maxAge > 72`).
+5. **Anti-Bot & Cloudflare Protections**: Certain employer portals return HTTP 403/429 or present CAPTCHAs to automated requests, or exceed the 6-second verification timeout. JobPulse AI labels these listings as `VERIFICATION_BLOCKED` rather than guessing their status.
+6. **Local Host & Scheduler Dependency**: Background automation via `node-cron` runs in-process inside the Express backend server. The backend process and host machine must remain running for scheduled daily runs to trigger. Deduplication tracks the last 100 notified IDs in `settings.json` to prevent repeated alerts during scheduled runs.
+7. **Local JSON File Persistence**: Data is stored locally as structured JSON documents in `./data/` (`jobs.json`, `matches.json`, `profile.json`, `resume.json`, `settings.json`, `scheduler_status.json`) with an in-memory cache. It does not use a distributed cloud database, making it ideal for desktop or single-server deployment.
 
 ---
 
@@ -501,7 +518,7 @@ Planned enhancements for future releases include:
 - [ ] **ATS Direct Integrations**: Direct API webhooks for Greenhouse, Lever, and Workday careers portals.
 - [ ] **Vector Embeddings Matching**: Integration of vector embeddings (e.g., pgvector) for deep semantic matching alongside the deterministic 5-factor engine.
 - [ ] **Browser Extension**: Lightweight extension to audit job vacancy pages directly on LinkedIn, Indeed, and Naukri.
-- [ ] **Multi-User Authentication**: JWT-based user session management with persistent cloud MongoDB storage.
+- [ ] **Multi-User Authentication & Cloud Database**: JWT-based session management and cloud database integration (e.g., PostgreSQL or MongoDB).
 
 ---
 

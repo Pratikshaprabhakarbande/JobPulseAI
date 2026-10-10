@@ -3,7 +3,7 @@ dotenv.config();
 
 export const config = {
   port: parseInt(process.env.PORT || '5000', 10),
-  mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/jobpulse',
+  dataDir: process.env.DATA_DIR || './data',
 
   // AI Configuration
   ai: {

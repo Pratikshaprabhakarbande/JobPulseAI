@@ -196,12 +196,16 @@ Lists job postings matching query filters.
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
 | `search` | `string` | Text query matching title, company, or skills. |
+| `role` | `string` | Title/role substring filter. |
+| `company` | `string` | Company name substring filter. |
+| `location` | `string` | Location name substring filter. |
 | `workMode` | `string` | `'Remote'`, `'Hybrid'`, `'On-site'`, or `'all'`. |
-| `maxAge` | `number` | Recency filter in hours (`24`, `72`, `168`, `336`). |
+| `experienceLevel` | `string` | Target experience tier. |
+| `maxAge` | `number` | Recency filter in hours (`24`, `72`, `168`, `336`). (Unverified timestamps excluded from 24h & 72h). |
 | `minScore` | `number` | Minimum match score threshold (`0`–`100`). |
-| `verifiedOnly` | `boolean` | When `'true'`, returns only `VERIFIED_OPEN` vacancies. |
-| `international` | `boolean` | When `'true'`, includes non-India international listings. |
-| `sortBy` | `string` | `'match'`, `'newest'`, `'oldest'`, `'company'`. |
+| `verifiedOnly` | `boolean` | When `'true'`, returns only `VERIFIED_OPEN` and `LIKELY_OPEN` vacancies. |
+| `allowInternational` | `boolean` | When `'true'`, includes non-India international listings. Default `'false'` (India-first). |
+| `sortBy` | `string` | `'match'` (default), `'newest'`, or `'company'`. |
 
 **Response `200 OK`**:
 ```json

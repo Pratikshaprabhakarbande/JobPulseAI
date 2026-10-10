@@ -36,7 +36,7 @@ flowchart TB
         subgraph Routes["API Layer"]
             R_Resume["`/api/resume`"]
             R_Jobs["`/api/jobs`"]
-            R_Dash["`/api/dashboard`"]
+            R_Dash["`/api/dashboard/stats`"]
             R_Settings["`/api/settings`"]
             R_Sched["`/api/scheduler`"]
             R_Health["`/api/health`"]
@@ -47,7 +47,7 @@ flowchart TB
             JobEngine["Job Discovery Engine (`jobService.ts`)"]
             Verifier["Live Vacancy Verifier (`verificationService.ts`)"]
             Matcher["5-Factor Eligibility Engine (`aiService.ts`)"]
-            Store["Local DataStore & Memory Cache (`dataStore.ts`)"]
+            Store["Local JSON File Store (`dataStore.ts`)"]
             Scheduler["Automation Scheduler (`schedulerService.ts`)"]
             Emailer["Deduplicated Email Dispatcher (`emailService.ts`)"]
         end
@@ -105,9 +105,9 @@ The resume analysis service supports diverse educational and engineering discipl
 ### 2.2 Live Job Discovery Service (`jobService.ts`)
 The job engine gathers vacancies only from legitimate, permitted sources and tags them with genuine metadata:
 
-- **Adzuna API**: Connects to the official Adzuna job search API targeting India (`in`) across major tech hubs (Bengaluru, Delhi NCR, Hyderabad, Pune, Mumbai, Chennai).
-- **Remotive API**: Pulls public worldwide remote opportunities, verifying remote eligibility for Indian candidates.
-- **Arbeitnow API**: Serves as a public European/global tech fallback.
+- **Adzuna API**: Connects to the official Adzuna job search API targeting India (`in`) across major tech hubs (Bengaluru, Delhi NCR, Hyderabad, Pune, Mumbai, Chennai). Requires `ADZUNA_APP_ID` & `ADZUNA_APP_KEY`.
+- **Remotive API**: Pulls public worldwide remote opportunities from Remotive's public REST API, verifying remote eligibility for Indian candidates (no credentials required).
+- **Arbeitnow API**: Serves as a public European/global tech fallback (no credentials required).
 - **Publication Timestamp Fidelity**:
   - Remotive provides ISO 8601 timestamps (`publication_date`) $\rightarrow$ tagged `source_timestamp`.
   - Adzuna provides ISO 8601 timestamps (`created`) $\rightarrow$ tagged `source_timestamp`.
@@ -130,7 +130,7 @@ flowchart TD
     SSRFCheck -- No (Safe) --> CacheCheck{"Cached Result < 6 Hours?"}
 
     CacheCheck -- Yes --> ReturnCache["Return Cached Status"]
-    CacheCheck -- No --> FetchHTTP["Execute Safe HTTP HEAD / GET (Timeout: 5s, Max Redirects: 5)"]
+    CacheCheck -- No --> FetchHTTP["Execute Safe HTTP GET (Timeout: 6s, SSRF Re-check on Redirect)"]
 
     FetchHTTP --> HTTPStatus{"HTTP Status Code"}
     HTTPStatus -- 404 / 410 --> Closed["EXPIRED_OR_CLOSED"]
