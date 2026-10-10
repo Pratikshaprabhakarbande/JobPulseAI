@@ -196,8 +196,9 @@ For an in-depth design specification and data flow diagrams, see [docs/ARCHITECT
 
 ```
 JobPulseAI/
-├── .github/workflows/          # Continuous Integration workflows
-│   └── ci.yml                  # Automated test & Vite build pipeline
+├── .github/workflows/          # GitHub Actions workflows
+│   ├── ci.yml                  # Automated test & Vite build pipeline
+│   └── deploy.yml              # GitHub Pages deployment workflow (client/dist)
 ├── .env.example                # Root environment template with safe placeholders
 ├── .gitignore                  # Git ignore rules (node_modules, .env, uploads, logs)
 ├── CONTRIBUTING.md             # Contribution guidelines & security disclosure
