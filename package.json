@@ -1,0 +1,24 @@
+{
+  "name": "jobpulse-ai",
+  "version": "1.0.0",
+  "description": "JobPulse AI — Resume-Driven Job Discovery, Live Vacancy Verification, and Career Alerts",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix client && npm install --prefix server",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "test": "npm test --prefix server",
+    "build:client": "npm run build --prefix client",
+    "build:server": "npm run build --prefix server"
+  },
+  "keywords": [
+    "job-search",
+    "resume-matching",
+    "career-discovery",
+    "job-verification",
+    "ai",
+    "typescript",
+    "react"
+  ],
+  "author": "Pratiksha Bande"
+}
