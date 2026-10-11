@@ -20,7 +20,7 @@ router.get('/', (req: Request, res: Response): void => {
     minScore: req.query.minScore ? parseInt(req.query.minScore as string, 10) : undefined,
     maxAge: req.query.maxAge ? parseInt(req.query.maxAge as string, 10) : undefined,
     verifiedOnly: req.query.verifiedOnly === 'true',
-    allowInternational: req.query.allowInternational === 'true',
+    allowInternational: req.query.allowInternational === 'true' || req.query.international === 'true',
     sortBy: (req.query.sortBy as string) || 'match',
   };
 

@@ -267,7 +267,10 @@ export class JobService {
       try {
         const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1?app_id=${encodeURIComponent(appId)}&app_key=${encodeURIComponent(appKey)}&results_per_page=20&what=${encodeURIComponent(q)}&content-type=application/json`;
 
-        const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        const res = await fetch(url, {
+          headers: { 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(10000),
+        });
         if (!res.ok) continue;
 
         const data = await res.json() as { results?: any[] };
@@ -357,7 +360,10 @@ export class JobService {
    */
   async fetchFromRemotive(targetRoles: string[] = []): Promise<Job[]> {
     const url = 'https://remotive.com/api/remote-jobs?limit=20';
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    const res = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
     if (!res.ok) return [];
 
     const data = await res.json() as { jobs?: any[] };
@@ -429,7 +435,10 @@ export class JobService {
    */
   async fetchFromArbeitnow(): Promise<Job[]> {
     const url = 'https://www.arbeitnow.com/api/job-board-api';
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    const res = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
     if (!res.ok) return [];
 
     const data = await res.json() as { data?: any[] };

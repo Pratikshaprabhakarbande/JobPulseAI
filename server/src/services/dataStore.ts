@@ -25,7 +25,7 @@ class DataStore {
   private dataDir: string;
 
   constructor() {
-    this.dataDir = path.join(process.cwd(), 'data');
+    this.dataDir = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'));
     if (!fs.existsSync(this.dataDir)) {
       fs.mkdirSync(this.dataDir, { recursive: true });
     }
@@ -117,7 +117,13 @@ class DataStore {
 
   private persist(key: string, data: any): void {
     try {
-      fs.writeFileSync(path.join(this.dataDir, `${key}.json`), JSON.stringify(data, null, 2));
+      if (!fs.existsSync(this.dataDir)) {
+        fs.mkdirSync(this.dataDir, { recursive: true });
+      }
+      const targetPath = path.join(this.dataDir, `${key}.json`);
+      const tempPath = path.join(this.dataDir, `${key}.tmp.${Date.now()}`);
+      fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
+      fs.renameSync(tempPath, targetPath);
     } catch (error) {
       console.error(`Failed to persist ${key}:`, error);
     }

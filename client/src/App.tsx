@@ -192,6 +192,8 @@ export default function App() {
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [runningAutomation, setRunningAutomation] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+  const [backendError, setBackendError] = useState<string | null>(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -206,6 +208,24 @@ export default function App() {
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  const checkBackendHealth = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await api.checkHealth();
+      if (res && (res.status === 'ok' || res.status === 'UP')) {
+        setBackendStatus('connected');
+        setBackendError(null);
+        return true;
+      }
+      setBackendStatus('disconnected');
+      setBackendError('Unexpected response from backend health check');
+      return false;
+    } catch (err: any) {
+      setBackendStatus('disconnected');
+      setBackendError(err.message || 'Connection refused');
+      return false;
+    }
   }, []);
 
   // ============ Data Loading ============
@@ -224,7 +244,10 @@ export default function App() {
       if (filterMaxAge) params.maxAge = filterMaxAge;
       if (filterMinScore) params.minScore = filterMinScore;
       if (filterVerifiedOnly) params.verifiedOnly = 'true';
-      if (filterIncludeInternational) params.international = 'true';
+      if (filterIncludeInternational) {
+        params.international = 'true';
+        params.allowInternational = 'true';
+      }
 
       const data = await api.getJobs(params);
       setJobs(data.jobs || []);
@@ -255,14 +278,16 @@ export default function App() {
     } catch { /* ignore */ }
   }, []);
 
+  const reloadAllData = useCallback(async () => {
+    setLoading(true);
+    await checkBackendHealth();
+    await Promise.all([loadStats(), loadJobs(), loadResumeAndProfile(), loadSettings()]);
+    setLoading(false);
+  }, [checkBackendHealth, loadStats, loadJobs, loadResumeAndProfile, loadSettings]);
+
   useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      await Promise.all([loadStats(), loadJobs(), loadResumeAndProfile(), loadSettings()]);
-      setLoading(false);
-    };
-    init();
-  }, []); // eslint-disable-line
+    reloadAllData();
+  }, [reloadAllData]);
 
   useEffect(() => {
     loadJobs();
@@ -363,7 +388,9 @@ export default function App() {
       if (detail.analysis) {
         setJobAnalysis(detail.analysis);
       }
-      if (detail.job?.verification) {
+      if (detail.verification) {
+        setSelectedJob(detail);
+      } else if (detail.job?.verification) {
         setSelectedJob(detail.job);
       }
     } catch { /* ignore */ }
@@ -485,6 +512,26 @@ export default function App() {
               <span className="hidden sm:inline-flex ml-2 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-primary-500/15 text-primary-300 border border-primary-500/20">
                 🇮🇳 India-First
               </span>
+              {backendStatus === 'connected' ? (
+                <span className="hidden md:inline-flex items-center gap-1.5 ml-2 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  Backend Online
+                </span>
+              ) : backendStatus === 'checking' ? (
+                <span className="hidden md:inline-flex items-center gap-1.5 ml-2 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-surface-700 text-surface-300 border border-white/5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-surface-400 animate-pulse"></span>
+                  Checking...
+                </span>
+              ) : (
+                <button
+                  onClick={() => { setPage('settings'); setSelectedJob(null); }}
+                  className="hidden md:inline-flex items-center gap-1.5 ml-2 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-red-500/15 text-red-300 border border-red-500/25 hover:bg-red-500/25 transition-all cursor-pointer"
+                  title={backendError || 'Backend unreachable. Click to configure in Settings.'}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
+                  Backend Offline (Connect)
+                </button>
+              )}
               {stats?.demoMode && (
                 <span className="ml-2 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider">
                   Demo
@@ -564,12 +611,15 @@ export default function App() {
             analyzing={analyzing}
             runningAutomation={runningAutomation}
             candidateProfile={candidateProfile}
+            backendStatus={backendStatus}
+            backendError={backendError}
             onRefresh={handleRefreshJobs}
             onAnalyzeAll={handleAnalyzeAll}
             onRunAutomation={handleRunAutomation}
             onViewJob={handleViewJob}
             onGoToJobs={() => setPage('jobs')}
             onGoToResume={() => setPage('resume')}
+            onGoToSettings={() => setPage('settings')}
             getScoreColor={getScoreColor}
             getScoreBg={getScoreBg}
           />
@@ -623,6 +673,11 @@ export default function App() {
             settings={settings}
             stats={stats}
             runningAutomation={runningAutomation}
+            backendStatus={backendStatus}
+            backendError={backendError}
+            onCheckBackend={checkBackendHealth}
+            onReloadAll={reloadAllData}
+            showToast={showToast}
             onSave={handleSaveSettings}
             onTestEmail={handleTestEmail}
             onRunAutomation={handleRunAutomation}
@@ -686,7 +741,8 @@ function VerificationBadge({ status }: { status?: VerificationStatus }) {
 // ============ Dashboard View ============
 function DashboardView({
   stats, jobs, loading, analyzing, runningAutomation, candidateProfile,
-  onRefresh, onAnalyzeAll, onRunAutomation, onViewJob, onGoToJobs, onGoToResume,
+  backendStatus, backendError,
+  onRefresh, onAnalyzeAll, onRunAutomation, onViewJob, onGoToJobs, onGoToResume, onGoToSettings,
   getScoreColor, getScoreBg
 }: any) {
   const topJobs = jobs
@@ -696,6 +752,27 @@ function DashboardView({
 
   return (
     <div className="space-y-8">
+      {/* Backend Disconnected Notice Banner */}
+      {backendStatus === 'disconnected' && (
+        <div className="glass-card p-5 border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-surface-900 to-amber-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-slide-up">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-200">Express Backend Offline / Unreachable</p>
+              <p className="text-xs text-surface-300 mt-0.5 leading-relaxed">
+                GitHub Pages statically hosts this UI. Real job discovery, PDF resume parsing, and email alerts require your Node.js backend.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onGoToSettings}
+            className="px-4 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold hover:bg-amber-500/30 transition-all shrink-0 cursor-pointer"
+          >
+            Connect Backend in Settings →
+          </button>
+        </div>
+      )}
+
       {/* Hero Header */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-900/60 via-surface-900 to-accent-900/40 border border-white/5 p-8">
         <div className="absolute top-0 right-0 w-64 h-64 bg-primary-500/10 rounded-full blur-3xl translate-x-1/2 -translate-y-1/2"></div>
@@ -707,9 +784,15 @@ function DashboardView({
                   <span className="bg-gradient-to-r from-primary-300 via-primary-400 to-accent-400 bg-clip-text text-transparent">JobPulse AI</span>
                   <span className="ml-2">🚀</span>
                 </h1>
-                <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Production Engine
-                </span>
+                {backendStatus === 'connected' ? (
+                  <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Backend Live
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Static Frontend Mode
+                  </span>
+                )}
               </div>
               <p className="mt-2 text-surface-400 text-sm sm:text-base">
                 Resume-Driven Job Discovery • Live Vacancy Verification • India-First Recommendations
@@ -751,9 +834,13 @@ function DashboardView({
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           <div className="space-y-3">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Automation Pipeline Active
+              <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                backendStatus === 'connected'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  : 'bg-surface-800 text-surface-400 border border-white/5'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${backendStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-surface-500'}`}></span>
+                {backendStatus === 'connected' ? 'Automation Pipeline Ready' : 'Backend Disconnected'}
               </span>
               <span className="px-3 py-1 rounded-full text-xs font-medium bg-primary-500/15 text-primary-300 border border-primary-500/20">
                 💼 Provider: {stats?.jobProvider || 'Live Sources (Adzuna + Remotive)'}
@@ -1861,10 +1948,13 @@ function ResumeView({ resume, candidateProfile, loading, onUpload, onUpdateProfi
 
 // ============ Settings View ============
 function SettingsView({
-  settings, stats, runningAutomation, onSave, onTestEmail, onRunAutomation
+  settings, stats, runningAutomation, backendStatus, backendError, onCheckBackend, onReloadAll, showToast, onSave, onTestEmail, onRunAutomation
 }: any) {
   const [localSettings, setLocalSettings] = useState<UserSettings | null>(settings);
   const [newRole, setNewRole] = useState('');
+  const [customApiUrl, setCustomApiUrl] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('jobpulse_backend_url') || '' : ''));
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionFeedback, setConnectionFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (settings) setLocalSettings(settings);
@@ -1891,12 +1981,149 @@ function SettingsView({
     handleChange('targetRoles', localSettings.targetRoles.filter((r: string) => r !== role));
   };
 
+  const handleTestConnection = async () => {
+    try {
+      setTestingConnection(true);
+      setConnectionFeedback(null);
+      const urlToTest = customApiUrl.trim();
+      if (urlToTest) {
+        api.setApiBaseUrl(urlToTest);
+      }
+      const startTime = Date.now();
+      const res = await api.checkHealth();
+      const latency = Date.now() - startTime;
+      if (res && (res.status === 'ok' || res.status === 'UP')) {
+        setConnectionFeedback({
+          success: true,
+          message: `✅ Connected successfully! (Latency: ${latency}ms | Status: ${res.status} | Service: ${res.service || 'JobPulse AI'})`
+        });
+        showToast('Backend connection verified!', 'success');
+        if (onCheckBackend) await onCheckBackend();
+      } else {
+        setConnectionFeedback({
+          success: false,
+          message: 'Backend responded with an unexpected status.'
+        });
+      }
+    } catch (err: any) {
+      setConnectionFeedback({
+        success: false,
+        message: `❌ Connection failed: ${err.message}`
+      });
+      showToast('Backend connection failed: ' + err.message, 'error');
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handleSaveBackendUrl = async () => {
+    const url = customApiUrl.trim();
+    api.setApiBaseUrl(url || null);
+    showToast('Backend URL saved. Testing connection and reloading data...', 'info');
+    await handleTestConnection();
+    if (onReloadAll) await onReloadAll();
+  };
+
+  const handleResetBackendUrl = async () => {
+    api.setApiBaseUrl(null);
+    setCustomApiUrl('');
+    setConnectionFeedback(null);
+    showToast('Backend URL reset to default. Reloading...', 'info');
+    if (onCheckBackend) await onCheckBackend();
+    if (onReloadAll) await onReloadAll();
+  };
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold flex items-center gap-2">
         <Settings className="w-6 h-6 text-primary-400" />
         Application & Alert Settings
       </h1>
+
+      {/* Backend API Server Connection */}
+      <div className="glass-card p-6 space-y-4 border-primary-500/30">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Globe className="w-5 h-5 text-primary-400" />
+            <h2 className="text-lg font-semibold">Backend API Server Connection</h2>
+          </div>
+          {backendStatus === 'connected' ? (
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              Connected
+            </span>
+          ) : backendStatus === 'checking' ? (
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-surface-700 text-surface-300 border border-white/5">
+              <span className="w-2 h-2 rounded-full bg-surface-400 animate-pulse"></span>
+              Checking...
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30">
+              <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse"></span>
+              Disconnected
+            </span>
+          )}
+        </div>
+
+        <p className="text-sm text-surface-400 leading-relaxed">
+          GitHub Pages hosts only the static React frontend. To discover live jobs, parse PDF resumes, calculate AI match scores, and send email alerts, connect your deployed Express backend (e.g., Render, Railway, or local development server).
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-surface-400 block font-medium mb-1.5">Backend Base URL</label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="url"
+                value={customApiUrl}
+                onChange={e => setCustomApiUrl(e.target.value)}
+                placeholder="https://jobpulse-backend.onrender.com (or http://localhost:5000)"
+                className="flex-1 px-4 py-2.5 bg-surface-800/60 border border-white/10 rounded-xl text-sm text-white placeholder-surface-500 focus:outline-none focus:border-primary-500/60 font-mono"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={testingConnection}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold hover:bg-white/10 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${testingConnection ? 'animate-spin' : ''}`} />
+                  Test
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveBackendUrl}
+                  className="px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 text-white text-xs font-semibold shadow-lg shadow-primary-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Save & Connect
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {connectionFeedback && (
+            <div className={`p-3 rounded-lg text-xs font-mono border ${
+              connectionFeedback.success
+                ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                : 'bg-red-950/40 border-red-500/30 text-red-300'
+            }`}>
+              {connectionFeedback.message}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between text-[11px] text-surface-500 pt-1">
+            <span>Active base path: <code className="text-primary-300 font-mono">{api.getApiBaseUrl()}</code></span>
+            <button
+              type="button"
+              onClick={handleResetBackendUrl}
+              className="text-surface-400 hover:text-white underline cursor-pointer"
+            >
+              Reset to Default (/api)
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Scheduler Status */}
       <div className="glass-card p-6 space-y-4">

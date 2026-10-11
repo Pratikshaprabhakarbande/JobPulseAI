@@ -1,0 +1,31 @@
+name: Daily JobPulse Automation Trigger
+
+on:
+  schedule:
+    # 03:30 UTC = 09:00 IST (Indian Standard Time)
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger-automation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend Automation Endpoint
+        run: |
+          BACKEND_URL="${{ secrets.BACKEND_URL || vars.BACKEND_URL }}"
+          if [ -z "$BACKEND_URL" ]; then
+            echo "BACKEND_URL secret/variable not configured. Skipping external cron trigger."
+            echo "In-process node-cron will handle execution when backend is running continuously."
+            exit 0
+          fi
+          
+          # Clean URL
+          API_URL="${BACKEND_URL%/}/api/scheduler/trigger"
+          echo "Triggering JobPulse AI automation at: $API_URL"
+          
+          # Send POST request (with 60s timeout to allow wake-up on free hosts)
+          RESPONSE=$(curl -s -X POST "$API_URL" \
+            -H "Content-Type: application/json" \
+            --max-time 60 || true)
+            
+          echo "Response: $RESPONSE"

@@ -10,12 +10,32 @@ import settingsRoutes from './routes/settings';
 import schedulerRoutes from './routes/scheduler';
 import { schedulerService } from './services/schedulerService';
 import { jobService } from './services/jobService';
+import { dataStore } from './services/dataStore';
 
 const app = express();
 
 // ============ Middleware ============
+const defaultAllowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  'https://jobpulse.pratiksha.dev',
+];
+
+const customOrigins = config.corsOrigin
+  ? config.corsOrigin.split(',').map((o: string) => o.trim()).filter(Boolean)
+  : [];
+
+const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...customOrigins]));
+
 app.use(cors({
-  origin: config.corsOrigin,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || origin.endsWith('.pratiksha.dev')) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Allow client requests with credentials
+  },
   credentials: true,
 }));
 app.use((_req, res, next) => {
@@ -27,15 +47,8 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ============ API Routes ============
-app.use('/api/resume', resumeRoutes);
-app.use('/api/jobs', jobRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/scheduler', schedulerRoutes);
-
-// ============ Health Check ============
-app.get('/api/health', (_req, res) => {
+// ============ Health & Root Endpoints ============
+const sendHealth = (_req: express.Request, res: express.Response) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -45,7 +58,25 @@ app.get('/api/health', (_req, res) => {
     realSourceConfigured: jobService.isRealSourceConfigured(),
     schedulerRunning: schedulerService.getStatus().isRunning,
   });
+};
+
+app.get('/api/health', sendHealth);
+app.get('/health', sendHealth);
+app.get('/', (_req, res) => {
+  res.json({
+    name: 'JobPulse AI Backend API',
+    status: 'online',
+    health: '/api/health',
+    frontend: 'https://jobpulse.pratiksha.dev',
+  });
 });
+
+// ============ API Routes ============
+app.use('/api/resume', resumeRoutes);
+app.use('/api/jobs', jobRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/scheduler', schedulerRoutes);
 
 // ============ Error Handling ============
 app.use(notFoundHandler);
@@ -74,6 +105,14 @@ app.listen(config.port, () => {
 
   // Start background scheduler
   schedulerService.start();
+
+  // Background warm-up: populate live jobs on cold start if store is empty
+  if (!config.demoMode && dataStore.getJobs().jobs.length === 0) {
+    setTimeout(() => {
+      console.log('🔄 Initial store empty: warming up live job discovery in background...');
+      dataStore.refreshJobs().catch(e => console.warn('Startup warm-up notice:', e.message));
+    }, 2500);
+  }
 });
 
 export default app;

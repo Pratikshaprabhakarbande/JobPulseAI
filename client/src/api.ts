@@ -1,16 +1,45 @@
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+export function getApiBaseUrl(): string {
+  const custom = typeof window !== 'undefined' ? localStorage.getItem('jobpulse_backend_url') : null;
+  const raw = custom || import.meta.env.VITE_API_URL || '/api';
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  if (!trimmed || trimmed === '/api') return '/api';
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+}
+
+export function setApiBaseUrl(url: string | null): void {
+  if (typeof window !== 'undefined') {
+    if (url && url.trim()) {
+      localStorage.setItem('jobpulse_backend_url', url.trim());
+    } else {
+      localStorage.removeItem('jobpulse_backend_url');
+    }
+  }
+}
 
 async function request(endpoint: string, options?: RequestInit) {
-  const url = `${API_BASE}${endpoint}`;
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || `Request failed: ${res.status}`);
+  const base = getApiBaseUrl();
+  const url = `${base}${endpoint}`;
+  try {
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+      ...options,
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const msg = errorData.error || errorData.message || `Request failed: ${res.status}`;
+      throw new Error(msg);
+    }
+    return res.json();
+  } catch (err: any) {
+    // If request to static host failed with 404/405 or network connection refused
+    const isStaticSubpath = base === '/api' || (typeof window !== 'undefined' && base.includes(window.location.hostname));
+    if (isStaticSubpath && (err.message?.includes('404') || err.message?.includes('405') || err.message?.includes('Failed to fetch'))) {
+      throw new Error(
+        `Backend unreachable at ${base}. GitHub Pages hosts only the static frontend. Please configure your deployed backend URL in Settings.`
+      );
+    }
+    throw err;
   }
-  return res.json();
 }
 
 // ============ Dashboard ============
@@ -43,15 +72,26 @@ export const updateProfile = (profile: any) =>
   request('/resume/profile', { method: 'PUT', body: JSON.stringify(profile) });
 
 export const uploadResume = async (file: File) => {
+  const base = getApiBaseUrl();
   const formData = new FormData();
   formData.append('resume', file);
-  const url = `${API_BASE}/resume/upload`;
-  const res = await fetch(url, { method: 'POST', body: formData });
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Upload failed');
+  const url = `${base}/resume/upload`;
+  try {
+    const res = await fetch(url, { method: 'POST', body: formData });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || `Upload failed (${res.status})`);
+    }
+    return res.json();
+  } catch (err: any) {
+    const isStaticSubpath = base === '/api' || (typeof window !== 'undefined' && base.includes(window.location.hostname));
+    if (isStaticSubpath && (err.message?.includes('404') || err.message?.includes('405') || err.message?.includes('Failed to fetch'))) {
+      throw new Error(
+        `Backend unreachable at ${base}. Connect your live backend server in Settings to enable resume parsing.`
+      );
+    }
+    throw err;
   }
-  return res.json();
 };
 
 export const deleteResume = () =>

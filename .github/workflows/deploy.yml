@@ -35,6 +35,8 @@ jobs:
 
       - name: Build client production bundle
         working-directory: client
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL || vars.VITE_API_URL }}
         run: npm run build
 
       - name: Setup Pages
