@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 
 // ============ Verification Statuses ============
 export type VerificationStatus =
@@ -164,6 +165,13 @@ export interface DashboardStats {
 }
 
 export function createId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // fallback
+  }
   return uuidv4();
 }
 
