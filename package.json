@@ -4,6 +4,8 @@
   "description": "JobPulse AI — Resume-Driven Job Discovery, Live Vacancy Verification, and Career Alerts",
   "private": true,
   "scripts": {
+    "build": "npm --prefix server install && npm --prefix server run build",
+    "start": "npm --prefix server start",
     "install:all": "npm install --prefix client && npm install --prefix server",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",

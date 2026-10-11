@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: jobpulse-backend
+    name: JobPulseAI
     env: node
     plan: free
     rootDir: server
