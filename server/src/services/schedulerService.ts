@@ -1,6 +1,7 @@
 import cron, { ScheduledTask } from 'node-cron';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { config } from '../config';
 import { dataStore } from './dataStore';
 import { sendJobDigestEmail } from './emailService';
@@ -30,7 +31,11 @@ class SchedulerService {
   private statusFile: string;
 
   constructor() {
-    this.statusFile = path.join(process.cwd(), 'data', 'scheduler_status.json');
+    const defaultDataDir = process.env.VERCEL === '1'
+      ? path.join(os.tmpdir(), 'jobpulse_data')
+      : path.join(process.cwd(), 'data');
+    const dataDir = path.resolve(process.env.DATA_DIR || defaultDataDir);
+    this.statusFile = path.join(dataDir, 'scheduler_status.json');
 
     // Default initial status
     this.status = {

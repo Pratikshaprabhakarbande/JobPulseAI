@@ -10,20 +10,8 @@ import { uploadLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
-// Configure multer with safe disk storage
-const uploadsDir = path.resolve(config.upload.uploadDir);
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (_req, file, cb) => {
-    // Sanitize original filename and strip path traversal characters
-    const sanitized = path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
-    cb(null, `resume_${Date.now()}_${sanitized}`);
-  },
-});
+// Configure multer with safe memory storage for serverless compatibility
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -40,16 +28,14 @@ const upload = multer({
 
 // POST /api/resume/upload
 router.post('/upload', uploadLimiter, upload.single('resume'), async (req: Request, res: Response): Promise<void> => {
-  let filePath: string | null = null;
   try {
-    if (!req.file) {
+    if (!req.file || !req.file.buffer) {
       res.status(400).json({ error: 'No file uploaded' });
       return;
     }
 
-    filePath = req.file.path;
     const ext = path.extname(req.file.originalname).toLowerCase();
-    const buffer = fs.readFileSync(filePath);
+    const buffer = req.file.buffer;
 
     // Magic Bytes Verification
     if (ext === '.pdf') {
@@ -74,7 +60,7 @@ router.post('/upload', uploadLimiter, upload.single('resume'), async (req: Reque
         extractedText = data.text || '';
       } else if (ext === '.docx') {
         const mammoth = require('mammoth');
-        const result = await mammoth.extractRawText({ path: filePath });
+        const result = await mammoth.extractRawText({ buffer });
         extractedText = result.value || '';
       }
     } catch (parseError: any) {
@@ -120,11 +106,6 @@ router.post('/upload', uploadLimiter, upload.single('resume'), async (req: Reque
   } catch (error: any) {
     console.error('Resume upload error:', error);
     res.status(500).json({ error: `Upload failed: ${error.message}` });
-  } finally {
-    // Clean up uploaded file immediately (text has been extracted safely)
-    if (filePath && fs.existsSync(filePath)) {
-      try { fs.unlinkSync(filePath); } catch {}
-    }
   }
 });
 

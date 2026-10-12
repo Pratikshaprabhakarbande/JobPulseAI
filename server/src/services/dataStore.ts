@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { config } from '../config';
 import {
   Job,
@@ -25,9 +26,21 @@ class DataStore {
   private dataDir: string;
 
   constructor() {
-    this.dataDir = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'));
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true });
+    const defaultDataDir = process.env.VERCEL === '1'
+      ? path.join(os.tmpdir(), 'jobpulse_data')
+      : path.join(process.cwd(), 'data');
+    this.dataDir = path.resolve(process.env.DATA_DIR || defaultDataDir);
+    try {
+      if (!fs.existsSync(this.dataDir)) {
+        fs.mkdirSync(this.dataDir, { recursive: true });
+      }
+    } catch {
+      this.dataDir = path.join(os.tmpdir(), 'jobpulse_data');
+      try {
+        if (!fs.existsSync(this.dataDir)) {
+          fs.mkdirSync(this.dataDir, { recursive: true });
+        }
+      } catch {}
     }
 
     this.settings = {

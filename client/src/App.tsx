@@ -760,7 +760,7 @@ function DashboardView({
             <div>
               <p className="text-sm font-semibold text-amber-200">Express Backend Offline / Unreachable</p>
               <p className="text-xs text-surface-300 mt-0.5 leading-relaxed">
-                GitHub Pages statically hosts this UI. Real job discovery, PDF resume parsing, and email alerts require your Node.js backend.
+                Express API is currently offline or unreachable. Real job discovery, PDF resume parsing, and email alerts require the backend API.
               </p>
             </div>
           </div>
@@ -2066,7 +2066,7 @@ function SettingsView({
         </div>
 
         <p className="text-sm text-surface-400 leading-relaxed">
-          GitHub Pages hosts only the static React frontend. To discover live jobs, parse PDF resumes, calculate AI match scores, and send email alerts, connect your deployed Express backend (e.g., Render, Railway, or local development server).
+          JobPulse AI Express API is unified with this application on Vercel at <code className="text-primary-300">/api</code>. If you are running a custom development server or separate instance, you can override the base URL below.
         </p>
 
         <div className="space-y-3">

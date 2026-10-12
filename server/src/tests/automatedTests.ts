@@ -249,5 +249,87 @@ export async function runAllTests(): Promise<{ passed: number; failed: number; t
     assert.strictEqual(hasUnverifiedDate, true, 'Unverified date must be excluded from strict 24h');
   });
 
+  // Test 11: Express App Architecture & Serverless Route Mounts
+  await test('Serverless Express Adapter: Health endpoints respond with valid JSON status', async () => {
+    const app = (await import('../app')).default;
+    let jsonResult: any = null;
+    const headers: Record<string, any> = {};
+    const req: any = {
+      method: 'GET',
+      url: '/api/health',
+      headers: {},
+    };
+    const res: any = {
+      statusCode: 200,
+      status(code: number) { this.statusCode = code; return this; },
+      json(data: any) { jsonResult = data; return this; },
+      setHeader(name: string, val: any) { headers[name.toLowerCase()] = val; return this; },
+      getHeader(name: string) { return headers[name.toLowerCase()]; },
+    };
+
+    await new Promise<void>((resolve) => {
+      app(req, res, () => resolve());
+      setTimeout(() => resolve(), 50);
+    });
+
+    assert.ok(jsonResult, 'Health endpoint must return JSON');
+    assert.strictEqual(jsonResult.status, 'ok', 'Status must be ok');
+  });
+
+  // Test 12: Vercel Cron Authentication: Validates CRON_SECRET when configured
+  await test('Vercel Cron Security: Protects /api/scheduler/trigger when CRON_SECRET is configured', async () => {
+    const app = (await import('../app')).default;
+    process.env.CRON_SECRET = 'test-secret-123';
+    const headers: Record<string, any> = {};
+    const req: any = {
+      method: 'GET',
+      url: '/api/scheduler/trigger',
+      headers: {},
+      query: {},
+    };
+    const res: any = {
+      statusCode: 200,
+      status(code: number) { this.statusCode = code; return this; },
+      json(data: any) { return this; },
+      setHeader(name: string, val: any) { headers[name.toLowerCase()] = val; return this; },
+      getHeader(name: string) { return headers[name.toLowerCase()]; },
+    };
+
+    await new Promise<void>((resolve) => {
+      app(req, res, () => resolve());
+      setTimeout(() => resolve(), 50);
+    });
+
+    delete process.env.CRON_SECRET;
+    assert.strictEqual(res.statusCode, 401, 'Unauthorized request without CRON_SECRET must return 401');
+  });
+
+  // Test 13: Vercel Function Entrypoint: api/index.ts handler dispatches to Express app
+  await test('Vercel Function Entrypoint: api/index.ts correctly dispatches to Express app', async () => {
+    const handler = (await import('../../../api/index')).default;
+    let jsonResult: any = null;
+    const headers: Record<string, any> = { 'x-matched-path': '/api/health' };
+    const req: any = {
+      method: 'GET',
+      url: '/api',
+      headers,
+    };
+    const res: any = {
+      statusCode: 200,
+      status(code: number) { this.statusCode = code; return this; },
+      json(data: any) { jsonResult = data; return this; },
+      setHeader(name: string, val: any) { headers[name.toLowerCase()] = val; return this; },
+      getHeader(name: string) { return headers[name.toLowerCase()]; },
+    };
+
+    await new Promise<void>((resolve) => {
+      handler(req, res);
+      setTimeout(() => resolve(), 50);
+    });
+
+    assert.ok(jsonResult, 'Handler must produce JSON response');
+    assert.strictEqual(jsonResult.status, 'ok', 'Status must be ok');
+  });
+
   return { passed, failed, tests: log };
 }

@@ -3,15 +3,29 @@
   "version": "1.0.0",
   "description": "JobPulse AI — Resume-Driven Job Discovery, Live Vacancy Verification, and Career Alerts",
   "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
-    "build": "npm --prefix server install && npm --prefix server run build",
+    "build": "npm run build --prefix client",
+    "build:client": "npm run build --prefix client",
+    "build:server": "npm run build --prefix server",
     "start": "npm --prefix server start",
-    "install:all": "npm install --prefix client && npm install --prefix server",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
     "test": "npm test --prefix server",
-    "build:client": "npm run build --prefix client",
-    "build:server": "npm run build --prefix server"
+    "install:all": "npm install --prefix client && npm install --prefix server"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.16.10",
+    "typescript": "^5.6.2"
   },
   "keywords": [
     "job-search",
@@ -20,7 +34,8 @@
     "job-verification",
     "ai",
     "typescript",
-    "react"
+    "react",
+    "vercel"
   ],
   "author": "Pratiksha Bande"
 }

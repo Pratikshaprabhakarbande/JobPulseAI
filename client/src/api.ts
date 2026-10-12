@@ -31,11 +31,11 @@ async function request(endpoint: string, options?: RequestInit) {
     }
     return res.json();
   } catch (err: any) {
-    // If request to static host failed with 404/405 or network connection refused
+    // If request to backend failed with 404/405 or network connection refused
     const isStaticSubpath = base === '/api' || (typeof window !== 'undefined' && base.includes(window.location.hostname));
     if (isStaticSubpath && (err.message?.includes('404') || err.message?.includes('405') || err.message?.includes('Failed to fetch'))) {
       throw new Error(
-        `Backend unreachable at ${base}. GitHub Pages hosts only the static frontend. Please configure your deployed backend URL in Settings.`
+        `Backend API unreachable at ${base}. Please ensure the server is running or verify your connection.`
       );
     }
     throw err;
@@ -87,7 +87,7 @@ export const uploadResume = async (file: File) => {
     const isStaticSubpath = base === '/api' || (typeof window !== 'undefined' && base.includes(window.location.hostname));
     if (isStaticSubpath && (err.message?.includes('404') || err.message?.includes('405') || err.message?.includes('Failed to fetch'))) {
       throw new Error(
-        `Backend unreachable at ${base}. Connect your live backend server in Settings to enable resume parsing.`
+        `Backend API unreachable at ${base}. Please ensure the server is online to parse resumes.`
       );
     }
     throw err;
