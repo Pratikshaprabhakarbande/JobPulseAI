@@ -1,19 +1,28 @@
 {
-  "version": 2,
-  "buildCommand": "npm run build --prefix client",
-  "outputDirectory": "client/dist",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "client": {
+      "root": "client",
+      "framework": "vite"
+    },
+    "jobpulseai": {
+      "root": "server",
+      "framework": "express",
+      "buildCommand": "npm install --include=dev && npm run build"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api"
+      "destination": {
+        "service": "jobpulseai"
+      }
     },
     {
-      "source": "/api",
-      "destination": "/api"
-    },
-    {
-      "source": "/((?!api/).*)",
-      "destination": "/index.html"
+      "source": "/(.*)",
+      "destination": {
+        "service": "client"
+      }
     }
   ],
   "crons": [

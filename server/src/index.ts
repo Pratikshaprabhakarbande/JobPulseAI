@@ -40,3 +40,9 @@ if (process.env.VERCEL !== '1' && process.env.NODE_ENV !== 'test') {
 }
 
 export default app;
+
+// Support CommonJS export compatibility for Express runners
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = app;
+  module.exports.default = app;
+}
