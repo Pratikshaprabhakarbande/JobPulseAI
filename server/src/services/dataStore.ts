@@ -54,7 +54,17 @@ class DataStore {
         'Cybersecurity Intern',
         'SOC Analyst L1',
         'Security Analyst Intern',
+        'Information Security Intern',
+        'Penetration Testing / VAPT Intern',
+        'Ethical Hacking Intern',
         'Application Security Intern',
+        'Network Security Intern',
+        'Cloud Security Intern',
+        'GRC / Risk and Compliance Intern',
+        'DevSecOps / Junior DevSecOps',
+        'Junior Security Engineer',
+        'Entry-Level Security Analyst',
+        'Graduate Trainee / Cybersecurity Associate',
         'Software Engineer Intern',
         'Full Stack Developer Intern',
         'Backend Developer Intern',
@@ -68,12 +78,26 @@ class DataStore {
       ],
       preferredLocations: [
         'Bengaluru',
-        'Delhi NCR',
-        'Hyderabad',
         'Pune',
         'Mumbai',
+        'Nagpur',
+        'Nashik',
+        'Delhi NCR',
+        'Hyderabad',
         'Chennai',
+        'Bidar',
         'Remote (India)',
+      ],
+      preferredCities: [
+        'Bengaluru',
+        'Pune',
+        'Mumbai',
+        'Nagpur',
+        'Nashik',
+        'Delhi NCR',
+        'Hyderabad',
+        'Chennai',
+        'Bidar',
       ],
       countryPreference: 'India',
       verifiedOnly: true,
@@ -148,6 +172,7 @@ class DataStore {
     role?: string;
     company?: string;
     location?: string;
+    city?: string;
     workMode?: string;
     experienceLevel?: string;
     minScore?: number;
@@ -189,7 +214,15 @@ class DataStore {
         filtered = filtered.filter(j => j.company.toLowerCase().includes(comp));
       }
 
-      // 4. Location
+      // 4. Location & City
+      if (filters.city && filters.city !== 'all' && filters.city !== 'All') {
+        const cLower = filters.city.toLowerCase();
+        filtered = filtered.filter(j =>
+          (j.city && j.city.toLowerCase().includes(cLower)) ||
+          j.location.toLowerCase().includes(cLower)
+        );
+      }
+
       if (filters.location) {
         const loc = filters.location.toLowerCase();
         filtered = filtered.filter(j => j.location.toLowerCase().includes(loc));
@@ -283,6 +316,16 @@ class DataStore {
 
   // ============ Candidate Profile & Resume ============
   getResume(): ResumeData | null {
+    if (!this.resume && this.profile) {
+      return {
+        id: this.profile.id,
+        filename: `${this.profile.name || 'Candidate'}_Profile.pdf`,
+        extractedText: this.profile.summary || '',
+        uploadedAt: this.profile.updatedAt,
+        skills: this.profile.demonstratedSkills,
+        summary: this.profile.summary || '',
+      };
+    }
     return this.resume;
   }
 
@@ -313,14 +356,47 @@ class DataStore {
 
   updateProfile(updates: Partial<CandidateProfile>): CandidateProfile {
     if (!this.profile) {
-      throw new Error('No candidate profile exists to update. Upload a resume first.');
+      this.profile = this.getProfile();
     }
 
-    this.profile = {
-      ...this.profile,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
+    if (!this.profile) {
+      // If client provided candidate profile data (e.g. after refresh or on ephemeral container)
+      if (updates && (updates.demonstratedSkills || updates.targetRoles || updates.summary || updates.name)) {
+        this.profile = {
+          id: updates.id || createId(),
+          name: updates.name || 'Candidate',
+          summary: updates.summary || 'Cybersecurity and software professional targeting internships across India.',
+          education: updates.education || [{ degree: 'B.E. CSE', branch: 'Cybersecurity', institution: 'Engineering College', graduationYear: 2026 }],
+          demonstratedSkills: updates.demonstratedSkills || [],
+          inferredInterests: updates.inferredInterests || ['Cybersecurity', 'SOC Analysis'],
+          toolsAndFrameworks: updates.toolsAndFrameworks || [],
+          certifications: updates.certifications || [],
+          projects: updates.projects || [],
+          experienceHistory: updates.experienceHistory || [],
+          experienceLevel: updates.experienceLevel || 'Intern',
+          yearsOfExperienceEstimate: updates.yearsOfExperienceEstimate || 0,
+          targetRoles: updates.targetRoles || this.settings.targetRoles,
+          detectedJobFamilies: updates.detectedJobFamilies || this.settings.targetJobFamilies,
+          preferredLocations: updates.preferredLocations || this.settings.preferredLocations,
+          workModePreference: updates.workModePreference || 'All',
+          countryPreference: updates.countryPreference || 'India',
+          verifiedOnly: updates.verifiedOnly !== false,
+          allowInternational: updates.allowInternational === true,
+          minMatchScore: updates.minMatchScore || this.settings.minMatchScore || 65,
+          updatedAt: new Date().toISOString(),
+          ...updates,
+        };
+      } else {
+        throw new Error('No candidate profile exists to update. Upload a resume first.');
+      }
+    } else {
+      this.profile = {
+        ...this.profile,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     this.persist('profile', this.profile);
 
     // If target roles or locations updated, reflect in settings
@@ -346,8 +422,8 @@ class DataStore {
     return match;
   }
 
-  async analyzeAllJobs(): Promise<JobMatch[]> {
-    const profile = this.getProfile();
+  async analyzeAllJobs(customProfile?: CandidateProfile): Promise<JobMatch[]> {
+    const profile = customProfile || this.getProfile();
     if (!profile) return [];
 
     const { jobs } = this.getJobs();
@@ -394,10 +470,15 @@ class DataStore {
     let verifiedOpen = 0;
     let excellent = 0, good = 0, possible = 0, low = 0;
     let indiaCount = 0;
+    const cityBreakdown: Record<string, number> = {};
 
     for (const job of jobs) {
       if (job.verification?.status === 'VERIFIED_OPEN') verifiedOpen++;
-      if (job.isIndiaLocation || job.isRemoteEligibleIndia) indiaCount++;
+      if (job.isIndiaLocation || job.isRemoteEligibleIndia) {
+        indiaCount++;
+        const cityKey = job.city || (job.isRemoteEligibleIndia ? 'Remote (India)' : 'Other India');
+        cityBreakdown[cityKey] = (cityBreakdown[cityKey] || 0) + 1;
+      }
 
       const match = this.matches.get(job.id);
       if (match) {
@@ -413,6 +494,7 @@ class DataStore {
       verifiedOpenJobs: verifiedOpen,
       newToday: jobs.filter(j => j.postedDate && new Date(j.postedDate).getTime() >= cutoff24h).length,
       indiaJobsCount: indiaCount,
+      cityBreakdown,
       excellentMatch: excellent,
       goodMatch: good,
       possibleMatch: possible,
@@ -422,7 +504,7 @@ class DataStore {
     };
   }
 
-  // ============ Matched Jobs for Email (With Deduplication) ============
+  // ============ Matched Jobs for Email (With Deduplication & India-First Priority) ============
   getTopMatchedJobsForEmail(
     minScore: number,
     limit: number,
@@ -430,6 +512,14 @@ class DataStore {
   ): Array<{ job: Job; match: JobMatch }> {
     const results: Array<{ job: Job; match: JobMatch }> = [];
     const notifiedSet = new Set(this.settings.lastNotifiedJobIds || []);
+    const preferredCities = this.settings.preferredCities || [];
+
+    const getIndiaPriority = (job: Job): number => {
+      if (job.city && preferredCities.some(c => c.toLowerCase() === job.city?.toLowerCase())) return 3;
+      if (job.isIndiaLocation) return 2;
+      if (job.isRemoteEligibleIndia) return 1;
+      return 0;
+    };
 
     for (const [jobId, match] of this.matches.entries()) {
       if (excludeNotified && notifiedSet.has(jobId)) {
@@ -445,9 +535,61 @@ class DataStore {
       }
     }
 
-    return results
-      .sort((a, b) => b.match.matchScore - a.match.matchScore)
-      .slice(0, limit);
+    if (results.length > 0) {
+      return results
+        .sort((a, b) => {
+          const prioDiff = getIndiaPriority(b.job) - getIndiaPriority(a.job);
+          if (prioDiff !== 0) return prioDiff;
+          return b.match.matchScore - a.match.matchScore;
+        })
+        .slice(0, limit);
+    }
+
+    // Fallback: If no pre-scored matches in map (e.g. cold start), select top available active vacancies
+    const { jobs } = this.getJobs();
+    for (const job of jobs) {
+      if (excludeNotified && notifiedSet.has(job.id)) continue;
+      if (job.verification?.status === 'EXPIRED_OR_CLOSED') continue;
+
+      const roles = this.profile?.targetRoles || this.settings.targetRoles || [];
+      const matchesTarget = roles.some(r => job.title.toLowerCase().includes(r.toLowerCase()));
+      const fallbackScore = matchesTarget ? 85 : 70;
+
+      if (fallbackScore >= minScore) {
+        results.push({
+          job,
+          match: {
+            id: `synth-match-${job.id}`,
+            jobId: job.id,
+            resumeId: 'default-profile',
+            matchScore: fallbackScore,
+            isEligible: true,
+            skillsMatched: job.requiredSkills.slice(0, 3),
+            skillsMissing: [],
+            experienceMatch: 'Fresher / Entry level match',
+            locationMatch: job.isIndiaLocation ? 'India target location' : 'Remote eligible',
+            whyMatch: 'Selected from active vacancies based on career profile preferences.',
+            eligibilityConcerns: [],
+            resumeSuggestions: 'Highlight relevant projects in application.',
+            scoreBreakdown: {
+              jobFamilyMatch: matchesTarget ? 90 : 70,
+              skillsMatch: fallbackScore,
+              experienceMatch: 90,
+              educationMatch: 90,
+              locationMatch: job.isIndiaLocation ? 95 : 60,
+            },
+            createdAt: new Date().toISOString(),
+          },
+        });
+      }
+      if (results.length >= limit) break;
+    }
+
+    return results.sort((a, b) => {
+      const prioDiff = getIndiaPriority(b.job) - getIndiaPriority(a.job);
+      if (prioDiff !== 0) return prioDiff;
+      return b.match.matchScore - a.match.matchScore;
+    });
   }
 
   recordNotifiedJobs(jobIds: string[]): void {

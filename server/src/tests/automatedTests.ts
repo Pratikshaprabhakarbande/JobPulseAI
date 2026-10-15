@@ -2,6 +2,7 @@ import assert from 'assert';
 import { evaluateJobMatch } from '../services/aiService';
 import { buildCandidateProfileFromText } from '../services/resumeAnalyzer';
 import { isSafeUrl } from '../services/verificationService';
+import { detectLocationMetadata, CITY_NORMALIZATION_MAP, INDIA_PRIORITY_SEARCH_CITIES } from '../services/jobService';
 import { Job, CandidateProfile, VerificationDetails } from '../utils/types';
 
 // Helper to construct synthetic test jobs
@@ -329,6 +330,83 @@ export async function runAllTests(): Promise<{ passed: number; failed: number; t
 
     assert.ok(jsonResult, 'Handler must produce JSON response');
     assert.strictEqual(jsonResult.status, 'ok', 'Status must be ok');
+  });
+
+  // Test 14: India City Normalization and Alias Resolution
+  await test('India City Normalization: Maps aliases (Bangalore, Bombay, Gurgaon, Poona, Bidar) to standardized names', () => {
+    assert.strictEqual(CITY_NORMALIZATION_MAP['bangalore'], 'Bengaluru', 'bangalore -> Bengaluru');
+    assert.strictEqual(CITY_NORMALIZATION_MAP['bombay'], 'Mumbai', 'bombay -> Mumbai');
+    assert.strictEqual(CITY_NORMALIZATION_MAP['gurgaon'], 'Delhi NCR', 'gurgaon -> Delhi NCR');
+    assert.strictEqual(CITY_NORMALIZATION_MAP['noida'], 'Delhi NCR', 'noida -> Delhi NCR');
+    assert.strictEqual(CITY_NORMALIZATION_MAP['bidar'], 'Bidar', 'bidar -> Bidar');
+    assert.strictEqual(CITY_NORMALIZATION_MAP['pune'], 'Pune', 'pune -> Pune');
+    assert.strictEqual(CITY_NORMALIZATION_MAP['nagpur'], 'Nagpur', 'nagpur -> Nagpur');
+    assert.strictEqual(CITY_NORMALIZATION_MAP['nashik'], 'Nashik', 'nashik -> Nashik');
+  });
+
+  // Test 15: India Location Metadata Detection: on-site Indian cities vs Remote (India) vs International
+  await test('India Location Detection: Distinguishes India priority cities, Remote India, and International', () => {
+    const bangaloreLoc = detectLocationMetadata('Bangalore, Karnataka', 'Security analyst opening');
+    assert.strictEqual(bangaloreLoc.isIndiaLocation, true, 'Bangalore must be India location');
+    assert.strictEqual(bangaloreLoc.city, 'Bengaluru', 'Bangalore must normalize to Bengaluru');
+
+    const puneLoc = detectLocationMetadata('Pune, Maharashtra', 'SOC Analyst L1');
+    assert.strictEqual(puneLoc.isIndiaLocation, true, 'Pune must be India location');
+    assert.strictEqual(puneLoc.city, 'Pune', 'Pune must detect Pune');
+
+    const bidarLoc = detectLocationMetadata('Bidar, Karnataka', 'Network security intern');
+    assert.strictEqual(bidarLoc.isIndiaLocation, true, 'Bidar must be India location');
+    assert.strictEqual(bidarLoc.city, 'Bidar', 'Bidar must detect Bidar');
+
+    const remoteIndia = detectLocationMetadata('Remote', 'Open to India applicants, work from anywhere in India');
+    assert.strictEqual(remoteIndia.isRemoteEligibleIndia, true, 'Open to India remote must be detected');
+
+    const overseasLoc = detectLocationMetadata('Berlin, Germany', 'Onsite in Berlin office only');
+    assert.strictEqual(overseasLoc.isIndiaLocation, false, 'Berlin must not be India location');
+    assert.strictEqual(overseasLoc.isRemoteEligibleIndia, false, 'Berlin onsite must not be India remote');
+  });
+
+  // Test 16: India Priority Search Cities contains all required priority regions
+  await test('Multi-City Search: Includes Karnataka, Maharashtra, Delhi NCR, Hyderabad, Chennai & Bidar', () => {
+    const cityNames = INDIA_PRIORITY_SEARCH_CITIES.map(c => c.normalized);
+    assert.ok(cityNames.includes('Bengaluru'), 'Must include Bengaluru');
+    assert.ok(cityNames.includes('Pune'), 'Must include Pune');
+    assert.ok(cityNames.includes('Mumbai'), 'Must include Mumbai');
+    assert.ok(cityNames.includes('Delhi NCR'), 'Must include Delhi NCR');
+    assert.ok(cityNames.includes('Hyderabad'), 'Must include Hyderabad');
+    assert.ok(cityNames.includes('Chennai'), 'Must include Chennai');
+    assert.ok(cityNames.includes('Bidar'), 'Must include Bidar');
+    assert.ok(cityNames.includes('Nagpur'), 'Must include Nagpur');
+    assert.ok(cityNames.includes('Nashik'), 'Must include Nashik');
+  });
+
+  // Test 17: Candidate Matching Engine boosts Indian locations and preferred cities
+  await test('AI Matcher: Priority location boost for target Indian cities', async () => {
+    const cyberCandidate = buildCandidateProfileFromText(cyberResumeText, 'cyber.pdf');
+    cyberCandidate.preferredLocations = ['Bengaluru', 'Pune', 'Bidar'];
+
+    const blrJob = createSyntheticJob({
+      title: 'Cybersecurity Intern',
+      city: 'Bengaluru',
+      location: 'Bengaluru, India',
+      isIndiaLocation: true,
+      requiredSkills: ['Python', 'Cybersecurity', 'VAPT'],
+    });
+
+    const overseasJob = createSyntheticJob({
+      title: 'Cybersecurity Intern',
+      city: 'Berlin',
+      location: 'Berlin, Germany',
+      isIndiaLocation: false,
+      country: 'Germany',
+      requiredSkills: ['Python', 'Cybersecurity', 'VAPT'],
+    });
+
+    const blrMatch = evaluateJobMatch(cyberCandidate, blrJob);
+    const overseasMatch = evaluateJobMatch(cyberCandidate, overseasJob);
+
+    assert.ok(blrMatch.matchScore > overseasMatch.matchScore, 'Bengaluru job score should exceed overseas job score');
+    assert.ok(blrMatch.scoreBreakdown.locationMatch >= 9, 'Preferred Indian city should receive high location match score');
   });
 
   return { passed, failed, tests: log };

@@ -144,6 +144,7 @@ export interface UserSettings {
   targetRoles: string[];
   targetJobFamilies: string[];
   preferredLocations: string[];
+  preferredCities: string[]; // Multi-select city picker: ['Bengaluru', 'Pune', 'Mumbai', ...]
   countryPreference: string;
   verifiedOnly: boolean;
   allowInternational: boolean;
@@ -156,6 +157,7 @@ export interface DashboardStats {
   verifiedOpenJobs: number;
   newToday: number;
   indiaJobsCount: number;
+  cityBreakdown: Record<string, number>; // { 'Bengaluru': 5, 'Pune': 3, ... }
   excellentMatch: number;
   goodMatch: number;
   possibleMatch: number;

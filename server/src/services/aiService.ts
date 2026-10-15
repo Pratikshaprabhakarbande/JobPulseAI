@@ -145,8 +145,14 @@ export function evaluateJobMatch(profile: CandidateProfile, job: Job): AIMatchRe
   let locationExplanation = '';
 
   if (job.isIndiaLocation) {
-    locationScore = 10;
-    locationExplanation = `Prime location match in India (${job.location}).`;
+    const isPreferredCity = profile.preferredLocations.some(
+      loc => (job.city && loc.toLowerCase().includes(job.city.toLowerCase())) ||
+             job.location.toLowerCase().includes(loc.toLowerCase())
+    );
+    locationScore = isPreferredCity ? 10 : 9;
+    locationExplanation = isPreferredCity
+      ? `Priority target location match: ${job.city || job.location} aligns with your preferred cities.`
+      : `Prime location match in India (${job.location}).`;
   } else if (job.workMode === 'Remote' && job.isRemoteEligibleIndia) {
     locationScore = 10;
     locationExplanation = 'Verified 100% remote opportunity with worldwide / India eligibility.';

@@ -1,5 +1,12 @@
 export function getApiBaseUrl(): string {
-  const custom = typeof window !== 'undefined' ? localStorage.getItem('jobpulse_backend_url') : null;
+  let custom = typeof window !== 'undefined' ? localStorage.getItem('jobpulse_backend_url') : null;
+  // Automatically cleanse legacy failing Render URLs
+  if (custom && (custom.includes('onrender.com') || custom.includes('render.com'))) {
+    try {
+      localStorage.removeItem('jobpulse_backend_url');
+    } catch {}
+    custom = null;
+  }
   const raw = custom || import.meta.env.VITE_API_URL || '/api';
   const trimmed = raw.trim().replace(/\/+$/, '');
   if (!trimmed || trimmed === '/api') return '/api';
@@ -8,7 +15,7 @@ export function getApiBaseUrl(): string {
 
 export function setApiBaseUrl(url: string | null): void {
   if (typeof window !== 'undefined') {
-    if (url && url.trim()) {
+    if (url && url.trim() && !url.includes('onrender.com') && !url.includes('render.com')) {
       localStorage.setItem('jobpulse_backend_url', url.trim());
     } else {
       localStorage.removeItem('jobpulse_backend_url');

@@ -2,16 +2,154 @@ import { config } from '../config/index';
 import { Job, getTimeAgo, createId, VerificationDetails } from '../utils/types';
 import { verificationService } from './verificationService';
 
-const INDIAN_CITIES = [
-  'bengaluru', 'bangalore', 'delhi', 'new delhi', 'gurugram', 'gurgaon', 'noida',
-  'hyderabad', 'pune', 'mumbai', 'chennai', 'kolkata', 'ahmedabad', 'jaipur',
-  'indore', 'chandigarh', 'kochi', 'coimbatore', 'bidar', 'karnataka', 'india'
+export const INDIAN_CITIES = [
+  // Priority 1: Bengaluru & Karnataka
+  'bengaluru', 'bangalore', 'bidar', 'mysuru', 'mysore', 'hubballi', 'hubli', 'mangaluru', 'mangalore', 'belagavi', 'belgaum', 'karnataka',
+  // Priority 2: Maharashtra (Pune, Mumbai, Nagpur, Nashik, etc.)
+  'pune', 'mumbai', 'bombay', 'nagpur', 'nashik', 'aurangabad', 'chhatrapati sambhajinagar', 'navi mumbai', 'thane', 'solapur', 'kolhapur', 'maharashtra',
+  // Priority 3: Delhi NCR (Delhi, Noida, Gurugram, etc.)
+  'delhi', 'new delhi', 'gurugram', 'gurgaon', 'noida', 'greater noida', 'ghaziabad', 'faridabad', 'ncr',
+  // Priority 4: Hyderabad & Telangana / Andhra Pradesh
+  'hyderabad', 'secunderabad', 'visakhapatnam', 'vizag', 'vijayawada', 'telangana', 'andhra pradesh',
+  // Priority 5: Chennai & Tamil Nadu
+  'chennai', 'madras', 'coimbatore', 'madurai', 'trichy', 'tamil nadu',
+  // Nationwide Indian Metros
+  'kolkata', 'calcutta', 'ahmedabad', 'surat', 'jaipur', 'lucknow', 'kanpur', 'indore', 'bhopal',
+  'chandigarh', 'kochi', 'cochin', 'thiruvananthapuram', 'trivandrum', 'bhubaneswar', 'patna', 'ranchi', 'guwahati', 'india'
 ];
+
+export const CITY_NORMALIZATION_MAP: Record<string, string> = {
+  bangalore: 'Bengaluru',
+  bengaluru: 'Bengaluru',
+  pune: 'Pune',
+  mumbai: 'Mumbai',
+  bombay: 'Mumbai',
+  'navi mumbai': 'Mumbai',
+  thane: 'Mumbai',
+  nagpur: 'Nagpur',
+  nashik: 'Nashik',
+  delhi: 'Delhi NCR',
+  'new delhi': 'Delhi NCR',
+  noida: 'Delhi NCR',
+  'greater noida': 'Delhi NCR',
+  gurugram: 'Delhi NCR',
+  gurgaon: 'Delhi NCR',
+  faridabad: 'Delhi NCR',
+  ghaziabad: 'Delhi NCR',
+  hyderabad: 'Hyderabad',
+  secunderabad: 'Hyderabad',
+  chennai: 'Chennai',
+  madras: 'Chennai',
+  coimbatore: 'Coimbatore',
+  bidar: 'Bidar',
+  mysuru: 'Mysuru',
+  mysore: 'Mysuru',
+  hubballi: 'Hubballi',
+  hubli: 'Hubballi',
+  mangaluru: 'Mangaluru',
+  mangalore: 'Mangaluru',
+  kolkata: 'Kolkata',
+  calcutta: 'Kolkata',
+  ahmedabad: 'Ahmedabad',
+  surat: 'Surat',
+  jaipur: 'Jaipur',
+  lucknow: 'Lucknow',
+  indore: 'Indore',
+  bhopal: 'Bhopal',
+  chandigarh: 'Chandigarh',
+  kochi: 'Kochi',
+  cochin: 'Kochi',
+  thiruvananthapuram: 'Thiruvananthapuram',
+  trivandrum: 'Thiruvananthapuram',
+  bhubaneswar: 'Bhubaneswar',
+  visakhapatnam: 'Visakhapatnam',
+  vizag: 'Visakhapatnam',
+  vijayawada: 'Vijayawada',
+};
+
+/**
+ * Priority cities for Adzuna multi-city search (in descending priority order).
+ * Adzuna "where" parameter uses these to search city-by-city for better India coverage.
+ */
+export const INDIA_PRIORITY_SEARCH_CITIES: { adzunaWhere: string; normalized: string }[] = [
+  { adzunaWhere: 'Bangalore', normalized: 'Bengaluru' },
+  { adzunaWhere: 'Pune', normalized: 'Pune' },
+  { adzunaWhere: 'Mumbai', normalized: 'Mumbai' },
+  { adzunaWhere: 'Nagpur', normalized: 'Nagpur' },
+  { adzunaWhere: 'Nashik', normalized: 'Nashik' },
+  { adzunaWhere: 'Delhi', normalized: 'Delhi NCR' },
+  { adzunaWhere: 'Hyderabad', normalized: 'Hyderabad' },
+  { adzunaWhere: 'Chennai', normalized: 'Chennai' },
+  { adzunaWhere: 'Noida', normalized: 'Delhi NCR' },
+  { adzunaWhere: 'Gurugram', normalized: 'Delhi NCR' },
+  { adzunaWhere: 'Bidar', normalized: 'Bidar' },
+];
+
+/**
+ * Cybersecurity and fresher-focused search queries for Adzuna.
+ * Each is a separate search term to maximize coverage.
+ */
+export const CYBERSECURITY_SEARCH_QUERIES: string[] = [
+  'cybersecurity intern',
+  'SOC analyst',
+  'security analyst intern',
+  'information security intern',
+  'penetration testing intern',
+  'ethical hacking intern',
+  'application security',
+  'network security intern',
+  'cloud security intern',
+  'GRC intern',
+  'DevSecOps junior',
+  'junior security engineer',
+  'entry level security analyst',
+  'graduate trainee cybersecurity',
+];
+
+/**
+ * City priority tiers for location scoring. Tier 1 = highest priority.
+ */
+export const CITY_PRIORITY_TIERS: Record<string, number> = {
+  'Bengaluru': 1,
+  'Pune': 2,
+  'Mumbai': 2,
+  'Nagpur': 3,
+  'Nashik': 3,
+  'Delhi NCR': 3,
+  'Hyderabad': 4,
+  'Chennai': 4,
+  'Bidar': 5,
+  'Mysuru': 5,
+  'Hubballi': 5,
+  'Mangaluru': 5,
+  'Coimbatore': 5,
+  'Kolkata': 6,
+  'Ahmedabad': 6,
+  'Jaipur': 6,
+  'Kochi': 6,
+  'Indore': 6,
+  'Chandigarh': 6,
+};
+
+/**
+ * Returns priority score (0-10) for a city. Higher = better.
+ */
+export function getCityPriorityScore(city?: string): number {
+  if (!city) return 3;
+  const tier = CITY_PRIORITY_TIERS[city];
+  if (!tier) return 4; // Unknown Indian city: moderate priority
+  // Tier 1 → 10, Tier 2 → 9, Tier 3 → 8, Tier 4 → 7, Tier 5 → 6, Tier 6 → 5
+  return Math.max(5, 11 - tier);
+}
 
 const JOB_FAMILIES_MAP: { family: string; keywords: string[] }[] = [
   {
     family: 'Cybersecurity & Information Security',
-    keywords: ['cyber', 'security', 'soc', 'siem', 'vapt', 'penetration', 'vulnerability', 'infosec', 'threat', 'appsec', 'cloud security', 'network security', 'incident response']
+    keywords: [
+      'cyber', 'security', 'soc', 'siem', 'vapt', 'penetration', 'vulnerability', 'infosec',
+      'threat', 'appsec', 'cloud security', 'network security', 'incident response', 'ethical hack',
+      'devsecops', 'grc', 'malware', 'security analyst'
+    ]
   },
   {
     family: 'Software Development & Full Stack',
@@ -92,10 +230,10 @@ function detectWorkMode(text: string): 'Remote' | 'Hybrid' | 'On-site' | 'Unknow
 
 function detectExperience(title: string, desc: string): { level: string; minYears?: number; maxYears?: number } {
   const combined = `${title} ${desc}`.toLowerCase();
-  if (combined.includes('intern') || combined.includes('trainee') || combined.includes('apprentice')) {
+  if (combined.includes('intern') || combined.includes('trainee') || combined.includes('apprentice') || combined.includes('fresher') || combined.includes('graduate trainee')) {
     return { level: 'Internship / Fresher', minYears: 0, maxYears: 1 };
   }
-  if (combined.includes('junior') || combined.includes('entry') || combined.includes('0-1') || combined.includes('fresher') || combined.includes('graduate')) {
+  if (combined.includes('junior') || combined.includes('entry') || combined.includes('0-1') || combined.includes('0-2') || combined.includes('associate')) {
     return { level: 'Entry Level (0-2 years)', minYears: 0, maxYears: 2 };
   }
   if (combined.includes('senior') || combined.includes('lead') || combined.includes('principal') || combined.includes('staff')) {
@@ -104,7 +242,7 @@ function detectExperience(title: string, desc: string): { level: string; minYear
   return { level: 'Mid Level (2-5 years)', minYears: 2, maxYears: 5 };
 }
 
-function detectLocationMetadata(locationStr: string, text: string): {
+export function detectLocationMetadata(locationStr: string, text: string): {
   country: string;
   city?: string;
   isIndiaLocation: boolean;
@@ -113,16 +251,15 @@ function detectLocationMetadata(locationStr: string, text: string): {
 } {
   const locLower = (locationStr || '').toLowerCase();
   const textLower = (text || '').toLowerCase();
+  const combined = `${locLower} ${textLower}`;
 
   // Check if explicitly India
-  const isIndia = INDIAN_CITIES.some(city => locLower.includes(city) || textLower.includes(`in ${city}`));
+  const isIndia = INDIAN_CITIES.some(city => locLower.includes(city) || combined.includes(`in ${city}`) || combined.includes(`${city}, india`));
 
   let detectedCity: string | undefined;
-  for (const city of ['bengaluru', 'bangalore', 'delhi', 'noida', 'gurugram', 'gurgaon', 'hyderabad', 'pune', 'mumbai', 'chennai', 'kolkata']) {
-    if (locLower.includes(city)) {
-      detectedCity = city.charAt(0).toUpperCase() + city.slice(1);
-      if (detectedCity === 'Bangalore') detectedCity = 'Bengaluru';
-      if (detectedCity === 'Gurgaon') detectedCity = 'Gurugram';
+  for (const [alias, normalized] of Object.entries(CITY_NORMALIZATION_MAP)) {
+    if (locLower.includes(alias) || combined.includes(`in ${alias}`)) {
+      detectedCity = normalized;
       break;
     }
   }
@@ -139,7 +276,9 @@ function detectLocationMetadata(locationStr: string, text: string): {
       locLower.includes('global') ||
       locLower.includes('anywhere') ||
       textLower.includes('work from anywhere') ||
-      textLower.includes('worldwide remote')
+      textLower.includes('worldwide remote') ||
+      textLower.includes('open to india') ||
+      textLower.includes('remote (india)')
     ) {
       isRemoteEligibleIndia = true;
     } else if (
@@ -245,32 +384,84 @@ export class JobService {
   }
 
   /**
-   * Fetch from Adzuna API (with India focus)
+   * Fetch from Adzuna API with India-First multi-city strategy.
+   * Searches across priority Indian cities with cybersecurity-focused queries.
+   * Rate-limit-aware: adds small delays between requests.
    */
   async fetchFromAdzuna(targetRoles: string[] = []): Promise<Job[]> {
     const { appId, appKey } = config.adzuna;
     const country = config.adzuna.country || 'in';
     if (!appId || !appKey) return [];
 
+    // Build query list: combine user target roles with cybersecurity defaults
     const queries: string[] = [];
     if (targetRoles.length > 0) {
-      queries.push(targetRoles[0]);
-      if (targetRoles.length > 1) queries.push(targetRoles[1]);
-    } else {
-      queries.push('cybersecurity', 'software developer');
+      // Use up to 4 target roles from user profile
+      for (const role of targetRoles.slice(0, 4)) {
+        if (!queries.includes(role)) queries.push(role);
+      }
+    }
+    // Add cybersecurity defaults that aren't already covered
+    for (const cyberQuery of CYBERSECURITY_SEARCH_QUERIES.slice(0, 6)) {
+      const already = queries.some(q => q.toLowerCase().includes(cyberQuery.split(' ')[0].toLowerCase()));
+      if (!already && queries.length < 8) {
+        queries.push(cyberQuery);
+      }
+    }
+    // Fallback
+    if (queries.length === 0) {
+      queries.push('cybersecurity intern', 'SOC analyst', 'security analyst', 'software developer intern');
     }
 
     const allJobs: Job[] = [];
     const seenUrls = new Set<string>();
+    const seenTitleCompany = new Set<string>();
 
-    for (const q of queries.slice(0, 2)) {
+    // Multi-city search: iterate priority cities with top queries
+    const searchCombinations: { query: string; where?: string }[] = [];
+
+    // First: broad India-wide searches with all queries (no city filter)
+    for (const q of queries.slice(0, 4)) {
+      searchCombinations.push({ query: q });
+    }
+
+    // Then: city-specific searches for top priority cities with top 2 queries
+    for (const city of INDIA_PRIORITY_SEARCH_CITIES.slice(0, 6)) {
+      for (const q of queries.slice(0, 2)) {
+        searchCombinations.push({ query: q, where: city.adzunaWhere });
+      }
+    }
+
+    // Cap total API calls to avoid rate limits (max ~16 calls)
+    const maxCalls = Math.min(searchCombinations.length, 16);
+    let callCount = 0;
+
+    for (const combo of searchCombinations.slice(0, maxCalls)) {
       try {
-        const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1?app_id=${encodeURIComponent(appId)}&app_key=${encodeURIComponent(appKey)}&results_per_page=20&what=${encodeURIComponent(q)}&content-type=application/json`;
+        // Rate limit: small delay between requests (200ms)
+        if (callCount > 0) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+        callCount++;
+
+        let url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1?app_id=${encodeURIComponent(appId)}&app_key=${encodeURIComponent(appKey)}&results_per_page=15&what=${encodeURIComponent(combo.query)}&content-type=application/json`;
+
+        // Add city-specific location filter
+        if (combo.where) {
+          url += `&where=${encodeURIComponent(combo.where)}`;
+        }
 
         const res = await fetch(url, {
           headers: { 'Accept': 'application/json' },
           signal: AbortSignal.timeout(10000),
         });
+
+        // Handle rate limit (429)
+        if (res.status === 429) {
+          console.warn(`Adzuna rate limit hit for "${combo.query}" in ${combo.where || 'India'}. Pausing...`);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
         if (!res.ok) continue;
 
         const data = await res.json() as { results?: any[] };
@@ -287,10 +478,17 @@ export class JobService {
           ) {
             continue;
           }
-          seenUrls.add(realUrl);
 
           const title = stripHtml(item.title || 'Job Opening');
           const company = item.company?.display_name || 'Hiring Employer';
+
+          // Cross-city deduplication by title+company
+          const dedupKey = `${title.toLowerCase()}|||${company.toLowerCase()}`;
+          if (seenTitleCompany.has(dedupKey)) continue;
+
+          seenUrls.add(realUrl);
+          seenTitleCompany.add(dedupKey);
+
           const location = item.location?.display_name || 'India';
           const description = stripHtml(item.description || `${title} at ${company}`);
 
@@ -341,17 +539,18 @@ export class JobService {
             verification: {
               status: 'VERIFIED_OPEN',
               checkedAt: new Date().toISOString(),
-              evidence: 'Retrieved directly from official Adzuna partner feed with authentic apply endpoint.',
+              evidence: `Retrieved directly from official Adzuna partner feed${combo.where ? ` (${combo.where})` : ''} with authentic apply endpoint.`,
               isDirectEmployerLink: true,
             },
             createdAt: postedDate || new Date().toISOString(),
           });
         }
       } catch (e) {
-        console.warn(`Adzuna fetch notice for "${q}":`, e);
+        console.warn(`Adzuna fetch notice for "${combo.query}" in ${combo.where || 'all India'}:`, e);
       }
     }
 
+    console.log(`📥 Adzuna multi-city search completed: ${allJobs.length} unique jobs from ${callCount} API calls`);
     return allJobs;
   }
 

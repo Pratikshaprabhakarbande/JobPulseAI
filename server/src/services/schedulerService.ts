@@ -180,16 +180,44 @@ class SchedulerService {
       const jobsCount = refreshResult.count;
       console.log(`   📥 Jobs fetched: ${jobsCount} (${refreshResult.provider})`);
 
-      // 2. AI Matching against uploaded resume
-      const resume = dataStore.getResume();
+      // 2. AI Matching against uploaded resume or configured candidate profile
+      let profile = dataStore.getProfile();
       let matchedCount = 0;
-      if (resume) {
-        const matchResults = await dataStore.analyzeAllJobs();
-        matchedCount = matchResults.length;
-        console.log(`   🧠 AI Matching completed: ${matchedCount} jobs analyzed against ${resume.filename}`);
-      } else {
-        console.log(`   ℹ️ No resume uploaded yet. Skipping AI resume matching step.`);
+
+      if (!profile) {
+        // Synthesize baseline candidate profile from settings target roles & preferences
+        const s = dataStore.getSettings();
+        profile = {
+          id: 'candidate-career-profile',
+          name: 'Cybersecurity & Tech Candidate',
+          summary: 'Cybersecurity and software fresher targeting internships and entry-level analyst roles across India.',
+          education: [{ degree: 'B.E. CSE', branch: 'Cybersecurity', institution: 'Engineering College', graduationYear: 2026 }],
+          demonstratedSkills: [
+            'Cybersecurity', 'SOC', 'Python', 'Linux', 'Network Security', 'SIEM',
+            'VAPT', 'Penetration Testing', 'OWASP', 'Wireshark', 'Nmap', 'Burp Suite'
+          ],
+          inferredInterests: ['Cybersecurity', 'SOC Analysis', 'VAPT'],
+          toolsAndFrameworks: ['Splunk', 'Wireshark', 'Burp Suite', 'Docker', 'Git'],
+          certifications: [],
+          projects: [],
+          experienceHistory: [],
+          experienceLevel: 'Intern',
+          yearsOfExperienceEstimate: 0,
+          detectedJobFamilies: s.targetJobFamilies || ['Cybersecurity & Information Security'],
+          targetRoles: s.targetRoles,
+          preferredLocations: s.preferredLocations,
+          workModePreference: 'All',
+          countryPreference: s.countryPreference,
+          verifiedOnly: s.verifiedOnly,
+          allowInternational: s.allowInternational,
+          minMatchScore: s.minMatchScore || 65,
+          updatedAt: new Date().toISOString(),
+        };
       }
+
+      const matchResults = await dataStore.analyzeAllJobs(profile);
+      matchedCount = matchResults.length;
+      console.log(`   🧠 AI Matching completed: ${matchedCount} jobs analyzed against candidate profile`);
 
       // 3. Check settings for email delivery
       const settings = dataStore.getSettings();

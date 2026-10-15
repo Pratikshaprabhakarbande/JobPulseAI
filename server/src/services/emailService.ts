@@ -77,7 +77,7 @@ export async function sendJobDigestEmail(
             <div style="font-weight: 600; color: #1f2937; font-size: 16px;">
               ${i + 1}. ${entry.job.title} ${verifyBadge}
             </div>
-            <div style="color: #6b7280; margin-top: 4px;">🏢 <strong>${entry.job.company}</strong> • 📍 ${entry.job.location}</div>
+            <div style="color: #6b7280; margin-top: 4px;">🏢 <strong>${entry.job.company}</strong> • ${entry.job.isIndiaLocation ? `🇮🇳 <strong style="color: #047857;">${entry.job.city ? `${entry.job.city}, India` : entry.job.location}</strong>` : (entry.job.isRemoteEligibleIndia ? '🌐 <strong style="color: #047857;">Remote (India Eligible)</strong>' : `📍 ${entry.job.location}`)}</div>
             <div style="color: #6b7280; margin-top: 2px;">💼 ${entry.job.experienceLevel} • ${entry.job.workMode} • Source: <strong>${entry.job.source}</strong></div>
             <div style="color: #9ca3af; font-size: 11px; margin-top: 2px;">🕒 Published: ${postedDateStr} • Verified: ${verifiedTimeStr}</div>
             <div style="margin-top: 8px;">

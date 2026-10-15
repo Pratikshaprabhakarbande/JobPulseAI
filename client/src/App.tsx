@@ -4,7 +4,7 @@ import {
   RefreshCw, Zap, ChevronRight, ArrowUpRight, X, Upload, Trash2,
   CheckCircle, AlertTriangle, SlidersHorizontal, Play, Clock, Check,
   ShieldCheck, ShieldAlert, Globe, MapPin, Award, CheckSquare, Square,
-  Building, ExternalLink
+  Building, ExternalLink, Plus
 } from 'lucide-react';
 import * as api from './api';
 
@@ -130,6 +130,7 @@ interface DashboardStats {
   totalJobs: number;
   verifiedOpenJobs?: number;
   indiaJobsCount?: number;
+  cityBreakdown?: Record<string, number>;
   newToday: number;
   excellentMatch: number;
   goodMatch: number;
@@ -171,8 +172,11 @@ interface UserSettings {
   targetRoles: string[];
   targetJobFamilies?: string[];
   preferredLocations?: string[];
+  preferredCities?: string[];
+  countryPreference?: string;
   verifiedOnly?: boolean;
   allowInternational?: boolean;
+  workMode?: string;
 }
 
 type Page = 'dashboard' | 'jobs' | 'resume' | 'settings';
@@ -197,6 +201,7 @@ export default function App() {
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterCity, setFilterCity] = useState('');
   const [filterWorkMode, setFilterWorkMode] = useState('all');
   const [filterMaxAge, setFilterMaxAge] = useState('');
   const [filterMinScore, setFilterMinScore] = useState('');
@@ -240,6 +245,7 @@ export default function App() {
     try {
       const params: Record<string, string> = { sortBy };
       if (searchQuery) params.search = searchQuery;
+      if (filterCity) params.city = filterCity;
       if (filterWorkMode !== 'all') params.workMode = filterWorkMode;
       if (filterMaxAge) params.maxAge = filterMaxAge;
       if (filterMinScore) params.minScore = filterMinScore;
@@ -254,7 +260,7 @@ export default function App() {
     } catch (err: any) {
       showToast('Failed to load jobs: ' + err.message, 'error');
     }
-  }, [searchQuery, filterWorkMode, filterMaxAge, filterMinScore, filterVerifiedOnly, filterIncludeInternational, sortBy, showToast]);
+  }, [searchQuery, filterCity, filterWorkMode, filterMaxAge, filterMinScore, filterVerifiedOnly, filterIncludeInternational, sortBy, showToast]);
 
   const loadResumeAndProfile = useCallback(async () => {
     try {
@@ -264,9 +270,30 @@ export default function App() {
         const profileData = await api.getProfile();
         if (profileData?.profile) {
           setCandidateProfile(profileData.profile);
+          try {
+            localStorage.setItem('jobpulse_candidate_profile', JSON.stringify(profileData.profile));
+            localStorage.setItem('jobpulse_resume_data', JSON.stringify(resumeData));
+          } catch {}
         }
       } else {
-        setCandidateProfile(null);
+        // If backend returns hasResume: false (e.g. after Vercel serverless cold restart), restore from browser storage
+        const cachedProfileStr = typeof window !== 'undefined' ? localStorage.getItem('jobpulse_candidate_profile') : null;
+        const cachedResumeStr = typeof window !== 'undefined' ? localStorage.getItem('jobpulse_resume_data') : null;
+        if (cachedProfileStr) {
+          try {
+            const cachedProfile = JSON.parse(cachedProfileStr);
+            const cachedResume = cachedResumeStr ? JSON.parse(cachedResumeStr) : {
+              hasResume: true,
+              resume: { filename: 'Uploaded Resume Document', uploadedAt: new Date().toISOString() }
+            };
+            setResume(cachedResume);
+            setCandidateProfile(cachedProfile);
+            // Re-sync with backend so serverless instance has the profile populated
+            api.updateProfile(cachedProfile).catch(() => {});
+          } catch {}
+        } else {
+          setCandidateProfile(null);
+        }
       }
     } catch { /* ignore */ }
   }, []);
@@ -401,6 +428,15 @@ export default function App() {
       setLoading(true);
       const result = await api.uploadResume(file);
       showToast(result.message || 'Resume uploaded and analyzed!', 'success');
+      if (result.profile) {
+        setCandidateProfile(result.profile);
+        try {
+          localStorage.setItem('jobpulse_candidate_profile', JSON.stringify(result.profile));
+          if (result.resume) {
+            localStorage.setItem('jobpulse_resume_data', JSON.stringify({ hasResume: true, resume: result.resume, profile: result.profile }));
+          }
+        } catch {}
+      }
       await loadResumeAndProfile();
       await loadJobs();
       await loadStats();
@@ -415,7 +451,12 @@ export default function App() {
     try {
       setLoading(true);
       const result = await api.updateProfile(updatedProfile);
-      setCandidateProfile(result.profile);
+      if (result.profile) {
+        setCandidateProfile(result.profile);
+        try {
+          localStorage.setItem('jobpulse_candidate_profile', JSON.stringify(result.profile));
+        } catch {}
+      }
       showToast('Candidate profile updated! Recommendations recalculated.', 'success');
       await Promise.all([loadJobs(), loadStats()]);
     } catch (err: any) {
@@ -532,11 +573,16 @@ export default function App() {
                   Backend Offline (Connect)
                 </button>
               )}
-              {stats?.demoMode && (
-                <span className="ml-2 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider">
-                  Demo
+              {stats?.demoMode ? (
+                <span className="ml-2 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider" title="Demo mode enabled: Using sample job listings. Provide API keys in settings to fetch live vacancies.">
+                  Demo Mode
                 </span>
-              )}
+              ) : stats?.realSourceConfigured ? (
+                <span className="hidden lg:inline-flex items-center gap-1 ml-2 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25" title={`Connected to live vacancies: ${stats?.jobProvider || 'Live Provider'}`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  Live Vacancies
+                </span>
+              ) : null}
             </div>
 
             <div className="flex items-center gap-1">
@@ -620,6 +666,10 @@ export default function App() {
             onGoToJobs={() => setPage('jobs')}
             onGoToResume={() => setPage('resume')}
             onGoToSettings={() => setPage('settings')}
+            onSelectCity={(city: string) => {
+              setFilterCity(city);
+              setPage('jobs');
+            }}
             getScoreColor={getScoreColor}
             getScoreBg={getScoreBg}
           />
@@ -631,6 +681,7 @@ export default function App() {
             analyzing={analyzing}
             verifyingId={verifyingId}
             searchQuery={searchQuery}
+            filterCity={filterCity}
             filterWorkMode={filterWorkMode}
             filterMaxAge={filterMaxAge}
             filterMinScore={filterMinScore}
@@ -639,6 +690,7 @@ export default function App() {
             sortBy={sortBy}
             showFilters={showFilters}
             onSearchChange={setSearchQuery}
+            onCityChange={setFilterCity}
             onWorkModeChange={setFilterWorkMode}
             onMaxAgeChange={setFilterMaxAge}
             onMinScoreChange={setFilterMinScore}
@@ -662,6 +714,10 @@ export default function App() {
             onUpdateProfile={handleUpdateProfile}
             onDelete={async () => {
               await api.deleteResume();
+              try {
+                localStorage.removeItem('jobpulse_candidate_profile');
+                localStorage.removeItem('jobpulse_resume_data');
+              } catch {}
               setResume(null);
               setCandidateProfile(null);
               await loadResumeAndProfile();
@@ -743,6 +799,7 @@ function DashboardView({
   stats, jobs, loading, analyzing, runningAutomation, candidateProfile,
   backendStatus, backendError,
   onRefresh, onAnalyzeAll, onRunAutomation, onViewJob, onGoToJobs, onGoToResume, onGoToSettings,
+  onSelectCity,
   getScoreColor, getScoreBg
 }: any) {
   const topJobs = jobs
@@ -926,6 +983,68 @@ function DashboardView({
         </div>
       )}
 
+      {/* India-First Job Discovery Hub & City Breakdown */}
+      <div className="glass-card p-6 border-blue-500/20 bg-gradient-to-r from-blue-950/30 via-surface-900 to-indigo-950/20 animate-fade-in">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-base font-semibold text-white flex items-center gap-2">
+              <span>🇮🇳</span> India Job Discovery Hub
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                {stats?.indiaJobsCount || 0} Priority Positions
+              </span>
+            </h3>
+            <p className="text-xs text-surface-400 mt-1">
+              Live vacancies prioritized for Bengaluru, Pune, Mumbai, Maharashtra, Delhi NCR, Hyderabad, Chennai, Bidar, and Remote India.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              if (onSelectCity) onSelectCity('');
+              else onGoToJobs();
+            }}
+            className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 shrink-0"
+          >
+            Explore All India Jobs <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* City Distribution Badges */}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {[
+            { name: 'Bengaluru', label: 'Bengaluru' },
+            { name: 'Pune', label: 'Pune' },
+            { name: 'Mumbai', label: 'Mumbai' },
+            { name: 'Delhi NCR', label: 'Delhi NCR' },
+            { name: 'Hyderabad', label: 'Hyderabad' },
+            { name: 'Chennai', label: 'Chennai' },
+            { name: 'Bidar', label: 'Bidar' },
+            { name: 'Nagpur', label: 'Nagpur' },
+            { name: 'Nashik', label: 'Nashik' },
+            { name: 'Remote (India)', label: 'Remote (India)' },
+          ].map(c => {
+            const count = stats?.cityBreakdown?.[c.name] || 0;
+            return (
+              <button
+                key={c.name}
+                type="button"
+                onClick={() => {
+                  if (onSelectCity) onSelectCity(c.name === 'Remote (India)' ? 'Remote' : c.name);
+                  else onGoToJobs();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-surface-800/80 hover:bg-surface-700 border border-white/5 text-xs flex items-center gap-2 transition-all hover:border-blue-500/30"
+              >
+                <span className="text-surface-300 font-medium">{c.label}</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                  count > 0 ? 'bg-blue-500/20 text-blue-300' : 'bg-surface-700/60 text-surface-500'
+                }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Top Matched Jobs */}
       <div>
         <div className="flex items-center justify-between mb-4">
@@ -1088,9 +1207,9 @@ function JobCard({ job, index, stats, onView, getScoreColor, getScoreBg }: any) 
 
 // ============ Jobs View ============
 function JobsView({
-  jobs, stats, loading, analyzing, verifyingId, searchQuery,
+  jobs, stats, loading, analyzing, verifyingId, searchQuery, filterCity,
   filterWorkMode, filterMaxAge, filterMinScore, filterVerifiedOnly,
-  filterIncludeInternational, sortBy, showFilters, onSearchChange,
+  filterIncludeInternational, sortBy, showFilters, onSearchChange, onCityChange,
   onWorkModeChange, onMaxAgeChange, onMinScoreChange, onVerifiedOnlyChange,
   onIncludeInternationalChange, onSortChange, onToggleFilters, onViewJob,
   onVerifyJob, onAnalyzeAll, onRefresh, getScoreColor, getScoreBg
@@ -1151,6 +1270,39 @@ function JobsView({
             <SlidersHorizontal className="w-4 h-4" />
             <span className="hidden sm:inline">Filters</span>
           </button>
+        </div>
+
+        {/* India-First Priority Cities Bar */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-[11px] text-surface-400 font-semibold uppercase tracking-wider mr-1">
+            🇮🇳 Priority Locations:
+          </span>
+          {[
+            { key: '', label: 'All India' },
+            { key: 'Bengaluru', label: 'Bengaluru' },
+            { key: 'Pune', label: 'Pune' },
+            { key: 'Mumbai', label: 'Mumbai' },
+            { key: 'Delhi NCR', label: 'Delhi NCR' },
+            { key: 'Hyderabad', label: 'Hyderabad' },
+            { key: 'Chennai', label: 'Chennai' },
+            { key: 'Bidar', label: 'Bidar' },
+            { key: 'Nagpur', label: 'Nagpur' },
+            { key: 'Nashik', label: 'Nashik' },
+            { key: 'Remote', label: 'Remote (India)' },
+          ].map(city => (
+            <button
+              key={city.key}
+              type="button"
+              onClick={() => onCityChange(city.key)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                filterCity === city.key
+                  ? 'bg-primary-600 text-white shadow-sm ring-1 ring-primary-400/40'
+                  : 'bg-surface-800/80 hover:bg-surface-700 text-surface-300 border border-white/5'
+              }`}
+            >
+              {city.label}
+            </button>
+          ))}
         </div>
 
         {/* Filter Quick Toggles */}
@@ -1257,6 +1409,7 @@ function JobsView({
                 onMaxAgeChange('');
                 onMinScoreChange('');
                 onSearchChange('');
+                if (onCityChange) onCityChange('');
               }}
               className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold hover:bg-white/10 transition-all"
             >
@@ -1952,8 +2105,16 @@ function SettingsView({
 }: any) {
   const [localSettings, setLocalSettings] = useState<UserSettings | null>(settings);
   const [newRole, setNewRole] = useState('');
-  const [customApiUrl, setCustomApiUrl] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('jobpulse_backend_url') || '' : ''));
   const [testingConnection, setTestingConnection] = useState(false);
+  const [customApiUrl, setCustomApiUrl] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const stored = localStorage.getItem('jobpulse_backend_url') || '';
+    if (stored.includes('onrender.com') || stored.includes('render.com')) {
+      try { localStorage.removeItem('jobpulse_backend_url'); } catch {}
+      return '';
+    }
+    return stored;
+  });
   const [connectionFeedback, setConnectionFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
@@ -2077,7 +2238,7 @@ function SettingsView({
                 type="url"
                 value={customApiUrl}
                 onChange={e => setCustomApiUrl(e.target.value)}
-                placeholder="https://jobpulse-backend.onrender.com (or http://localhost:5000)"
+                placeholder="/api (Default unified Vercel deployment) or http://localhost:5000"
                 className="flex-1 px-4 py-2.5 bg-surface-800/60 border border-white/10 rounded-xl text-sm text-white placeholder-surface-500 focus:outline-none focus:border-primary-500/60 font-mono"
               />
               <div className="flex gap-2">
@@ -2309,6 +2470,60 @@ function SettingsView({
               </button>
             </span>
           ))}
+        </div>
+      </div>
+
+      {/* India Priority Locations */}
+      <div className="glass-card p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            🇮🇳 India Priority Locations
+          </h2>
+          <span className="text-xs text-surface-400">Click to toggle preferred cities</span>
+        </div>
+        <p className="text-xs text-surface-400">
+          JobPulse AI prioritizes live vacancies in these cities. Select your preferred locations for high-priority matching and email digests:
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            'Bengaluru',
+            'Pune',
+            'Mumbai',
+            'Nagpur',
+            'Nashik',
+            'Delhi NCR',
+            'Hyderabad',
+            'Chennai',
+            'Bidar',
+            'Remote (India)',
+          ].map(city => {
+            const current = localSettings.preferredCities || localSettings.preferredLocations || [];
+            const isSelected = current.some((c: string) => c.toLowerCase() === city.toLowerCase());
+            return (
+              <button
+                key={city}
+                type="button"
+                onClick={() => {
+                  const updated = isSelected
+                    ? current.filter((c: string) => c.toLowerCase() !== city.toLowerCase())
+                    : [...current, city];
+                  setLocalSettings({
+                    ...localSettings,
+                    preferredCities: updated,
+                    preferredLocations: updated,
+                  });
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-primary-600 text-white shadow-sm ring-1 ring-primary-400/40'
+                    : 'bg-surface-800/80 hover:bg-surface-700 text-surface-400 border border-white/5'
+                }`}
+              >
+                <span>{city}</span>
+                {isSelected ? <Check className="w-3 h-3 text-white" /> : <Plus className="w-3 h-3 opacity-40" />}
+              </button>
+            );
+          })}
         </div>
       </div>
 

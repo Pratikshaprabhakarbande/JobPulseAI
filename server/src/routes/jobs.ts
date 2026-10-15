@@ -9,12 +9,13 @@ import { getTimeAgo, getFreshnessColor } from '../utils/types';
 const router = Router();
 
 // GET /api/jobs - List all jobs with filters & verification
-router.get('/', (req: Request, res: Response): void => {
+router.get('/', async (req: Request, res: Response): Promise<void> => {
   const filters = {
     search: req.query.search as string,
     role: req.query.role as string,
     company: req.query.company as string,
     location: req.query.location as string,
+    city: req.query.city as string,
     workMode: req.query.workMode as string,
     experienceLevel: req.query.experienceLevel as string,
     minScore: req.query.minScore ? parseInt(req.query.minScore as string, 10) : undefined,
@@ -24,7 +25,13 @@ router.get('/', (req: Request, res: Response): void => {
     sortBy: (req.query.sortBy as string) || 'match',
   };
 
-  const { jobs, matches } = dataStore.getJobs(filters);
+  let { jobs, matches } = dataStore.getJobs(filters);
+  if (jobs.length === 0 && !filters.search && !filters.role && !filters.company && !filters.city && !filters.location) {
+    await dataStore.refreshJobs().catch(() => {});
+    const reloaded = dataStore.getJobs(filters);
+    jobs = reloaded.jobs;
+    matches = reloaded.matches;
+  }
 
   const jobsWithMatches = jobs.map(job => {
     const match = matches.get(job.id);
